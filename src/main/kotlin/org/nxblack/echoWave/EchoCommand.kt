@@ -1,5 +1,6 @@
 package org.nxblack.echoWave
 
+import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -122,8 +123,8 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
 
                 plugin.setVoiceBan(target, true)
 
-                Bukkit.broadcastMessage(
-                    "§c[EchoWave] ${target.name} has been banned from voice chat."
+                Bukkit.broadcast(
+                    Component.text("§c[EchoWave] ${target.name} has been banned from voice chat.")
                 )
             }
 
@@ -148,8 +149,8 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
 
                 plugin.setVoiceBan(target, false)
 
-                Bukkit.broadcastMessage(
-                    "§a[EchoWave] ${target.name} has been unbanned from voice chat."
+                Bukkit.broadcast(
+                    Component.text("§a[EchoWave] ${target.name} has been unbanned from voice chat.")
                 )
             }
 
@@ -188,6 +189,8 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
                 }
 
                 plugin.reload(sender)
+
+
 
             }
 

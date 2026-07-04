@@ -1,10 +1,40 @@
+# ==========================================
+# EchoWave Configuration
+# ==========================================
+
+# Unique network identifier.
+# Leave as "standalone" if this is a single server.
+instance-id: standalone
+
+# Unique backend identifier inside the network.
+# Examples:
+#   lobby
+#   survival
+#   prison
+backend-id: main
+
+# ==========================================
+# Voice Moderation
+# ==========================================
+
 voice-bans: []
+
+# ==========================================
+# Sound Effects
+# ==========================================
 
 sounds:
   enabled: true
 
-  join: ENTITY_PLAYER_LEVELUP
-  invite: BLOCK_NOTE_BLOCK_CHIME
-  kick: ENTITY_VILLAGER_NO
-  invite-sent: BLOCK_NOTE_BLOCK_BELL
-  transfer: UI_TOAST_CHALLENGE_COMPLETE
+  join: entity.player.levelup
+  leave: entity.experience_orb.pickup
+  invite: block.note_block.chime
+  invite-sent: block.note_block.bell
+  kick: entity.villager.no
+  transfer: ui.toast.challenge_complete
+
+# ==========================================
+# Debug
+# ==========================================
+
+debug: false

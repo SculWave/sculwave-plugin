@@ -11,3 +11,4 @@ permissions:
   echowave.admin:
     description: Allows administrative EchoWave commands
     default: op
+folia-supported: true

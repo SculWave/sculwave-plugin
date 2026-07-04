@@ -5,6 +5,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class CreateRoomResponse(
     val success: Boolean,
-    val code: String,
+    val roomCode: String,
     val token: String
 )

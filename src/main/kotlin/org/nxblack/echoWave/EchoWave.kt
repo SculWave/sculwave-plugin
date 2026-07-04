@@ -7,11 +7,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
+import org.bukkit.NamespacedKey
+import org.bukkit.Registry
 import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import org.nxblack.echoWave.data.*
@@ -44,8 +48,20 @@ class EchoWave : JavaPlugin(), Listener {
         playerSettings.remove(event.player.uniqueId)
     }
 
-    override fun onEnable() {
+    @EventHandler
+    fun onJoin(event: PlayerJoinEvent) {
 
+        if (BackendState.roomCode.isBlank())
+            return
+
+        event.player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
+        event.player.sendMessage("§7Use this code in the EchoWave app.")
+    }
+
+    override fun onEnable() {
+        logger.info("====================================")
+        logger.info("EchoWave initialized successfully!")
+        logger.info("====================================")
         saveDefaultConfig()
         config.getStringList("voice-bans")
             .mapNotNull {
@@ -53,9 +69,20 @@ class EchoWave : JavaPlugin(), Listener {
             }
             .forEach(voiceBannedPlayers::add)
 
+
+        loadBackendConfig(true)
+
+
+        if (BackendState.backendId.isBlank()) {
+            logger.severe("backend-id cannot be empty!")
+            server.pluginManager.disablePlugin(this)
+            return
+
+        }
+
         scope.launch {
             roomMutex.withLock {
-                createRoom()
+                registerBackend()
             }
         }
 
@@ -67,55 +94,36 @@ class EchoWave : JavaPlugin(), Listener {
 
         server.pluginManager.registerEvents(this,this)
 
-        server.scheduler.runTaskTimer(
-
-            this, Runnable {
-
-                if (VoiceRoomState.roomCode.isBlank() || VoiceRoomState.authToken.isBlank()) return@Runnable
-
-
-                val payload = Bukkit.getOnlinePlayers()
-                    .filterNot { isVoiceBanned(it) }
-                    .map { player ->
-                    val settings = getPlayerSettings(player)
-
-                    PositionPayload(
-                        gamertag = player.name,
-                        x = player.location.blockX,
-                        y = player.location.blockY,
-                        z = player.location.blockZ,
-                        dimension = player.world.name,
-                        groupId = settings.groupId,
-                        isMuted = settings.muted
-                    )
-
-                }
-
-                if (!uploading.compareAndSet(false, true)) return@Runnable
-
-                scope.launch {
-                    try {
-                        sendPositions(payload)
-                    } finally {
-                        uploading.set(false)
-                    }
-                }
-
-            }, 20L, 20L
-        )
+        if (Platform.isFolia) {
+            startFoliaScheduler()
+        } else {
+            startBukkitScheduler()
+        }
 
     }
 
     override fun onDisable() {
-        scope.cancel()
+
+            runBlocking {
+                unregisterBackend()
+            }
+            scope.cancel()
+
     }
 
-    private suspend fun createRoom() {
+    private suspend fun registerBackend() {
         try {
+            val body = Json.encodeToString(
+                BackendRegisterRequest(
+                    BackendState.instanceId,
+                    BackendState.backendId
+                )
+            )
+
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("$SERVER_URL/api/create-room"))
+            .uri(URI.create("$SERVER_URL/api/backend/register"))
             .headers("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString("{}"))
+            .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
 
         val response = Http.client.sendAsync(
@@ -131,8 +139,13 @@ class EchoWave : JavaPlugin(), Listener {
                 return
             }
         val json = Json.decodeFromString<CreateRoomResponse>(response.body())
-        VoiceRoomState.roomCode = json.code
-        VoiceRoomState.authToken = json.token}
+            BackendState.roomCode = json.roomCode
+            BackendState.authToken = json.token
+            logger.info("====================================")
+            logger.info("EchoWave room created successfully!")
+            logger.info("Room Code: ${BackendState.roomCode}")
+            logger.info("====================================")
+        }
         catch (e: CancellationException) {
             throw e
         }
@@ -142,17 +155,19 @@ class EchoWave : JavaPlugin(), Listener {
 
     }
 
-    private suspend fun sendPositions(players: List<PositionPayload>) {
+    private suspend fun sendHeartbeat(players: List<PositionPayload>) {
 
         try {
-            val payload = PositionRequest(
-                code = VoiceRoomState.roomCode,
-                token = VoiceRoomState.authToken,
+            val payload = BackendHeartbeatRequest(
+                instanceId = BackendState.instanceId,
+                backendId = BackendState.backendId,
+                token = BackendState.authToken,
+                timestamp = System.currentTimeMillis(),
                 players = players
             )
             val body = Json.encodeToString(payload)
             val request = HttpRequest.newBuilder()
-                .uri(URI.create("$SERVER_URL/api/update-positions"))
+                .uri(URI.create("$SERVER_URL/api/backend/heartbeat"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body)).build()
 
@@ -170,13 +185,20 @@ class EchoWave : JavaPlugin(), Listener {
             }
 
             val result = Json.decodeFromString<UpdateResponse>(response.body())
-            if (result.error == "ROOM_NOT_FOUND") {
-                VoiceRoomState.roomCode = ""
-                VoiceRoomState.authToken = ""
+            if (
+                result.error == "BACKEND_NOT_FOUND" ||
+                result.error == "AUTH_FAILED"
+            ) {
+
+                BackendState.roomCode = ""
+                BackendState.authToken = ""
+
                 roomMutex.withLock {
-                    if (VoiceRoomState.roomCode.isBlank()) {
-                        createRoom()
+
+                    if (BackendState.roomCode.isBlank()) {
+                        registerBackend()
                     }
+
                 }
             }
         }
@@ -187,6 +209,140 @@ class EchoWave : JavaPlugin(), Listener {
             logger.warning("Failed to update positions: ${e.message}")
         }
 
+    }
+
+    private suspend fun unregisterBackend() {
+
+        try {
+
+            val body = Json.encodeToString(
+                BackendRegisterRequest(
+                    instanceId = BackendState.instanceId,
+                    backendId = BackendState.backendId
+                )
+            )
+
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create("$SERVER_URL/api/backend/unregister"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build()
+
+            Http.client.sendAsync(
+                request,
+                HttpResponse.BodyHandlers.discarding()
+            ).await()
+
+        }
+        catch (e: CancellationException) {
+            throw e
+        }
+        catch (e: Exception) {
+            logger.warning("Failed to unregister backend: ${e.message}")
+        }
+
+    }
+
+    private fun loadBackendConfig(generateIfMissing: Boolean) {
+
+        var instanceId = config.getString("instance-id").orEmpty()
+
+        if (instanceId.isBlank() || instanceId.equals("auto", true)) {
+
+            if (!generateIfMissing) {
+                logger.severe("instance-id cannot be empty!")
+                return
+            }
+
+            instanceId = UUID.randomUUID().toString()
+
+            config.set("instance-id", instanceId)
+
+            saveConfig()
+
+            logger.info("====================================")
+            logger.info("Generated new EchoWave network ID.")
+            logger.info("")
+            logger.info("Instance ID: $instanceId")
+            logger.info("")
+            logger.info("Use this same instance-id on every")
+            logger.info("server that belongs to this network.")
+            logger.info("====================================")
+        }
+
+        var backendId = config.getString("backend-id").orEmpty()
+
+        if (backendId.isBlank()) {
+
+            logger.severe("backend-id cannot be empty!")
+            return
+
+        }
+
+        if (backendId.equals("auto", true)) {
+
+            backendId = "main"
+
+            config.set("backend-id", backendId)
+
+            saveConfig()
+
+            logger.info("====================================")
+            logger.info("Using default backend-id: main")
+            logger.info("====================================")
+        }
+
+        BackendState.instanceId = instanceId
+        BackendState.backendId = backendId
+    }
+    private fun updatePositions() {
+
+        if (BackendState.roomCode.isBlank() ||
+            BackendState.authToken.isBlank())
+            return
+
+        val payload = Bukkit.getOnlinePlayers().map {
+
+            val settings = getPlayerSettings(it)
+
+            PositionPayload(
+                gamertag = it.name,
+                x = it.location.blockX,
+                y = it.location.blockY,
+                z = it.location.blockZ,
+                dimension = it.world.name,
+                groupId = settings.groupId,
+                isMuted = settings.muted
+            )
+
+        }
+
+        scope.launch {
+            sendHeartbeat(payload)
+        }
+    }
+
+
+
+    private fun startFoliaScheduler() {
+        server.globalRegionScheduler.runAtFixedRate(
+            this,
+            { _ ->
+                updatePositions()
+            },
+            20L,
+            20L
+        )
+    }
+    private fun startBukkitScheduler() {
+        server.scheduler.runTaskTimer(
+            this,
+            Runnable {
+                updatePositions()
+            },
+            20L,
+            20L
+        )
     }
 
     fun isVoiceBanned(player: Player): Boolean {
@@ -528,15 +684,40 @@ class EchoWave : JavaPlugin(), Listener {
             }
             .forEach(voiceBannedPlayers::add)
 
+        loadBackendConfig(generateIfMissing = false)
         sender.sendMessage("§aEchoWave configuration reloaded.")
+
+        scope.launch {
+
+            roomMutex.withLock {
+                unregisterBackend()
+                BackendState.roomCode = ""
+                BackendState.authToken = ""
+                registerBackend()
+            }
+        }
+
+
     }
 
     fun playConfiguredSound(player: Player, path: String) {
         if (!config.getBoolean("sounds.enabled")) return
 
-        val sound = runCatching {
-            Sound.valueOf(config.getString(path)!!)
-        }.getOrNull() ?: return
+        val soundName = config.getString(path) ?: return
+
+        val key = runCatching {
+            NamespacedKey.minecraft(soundName)
+        }.getOrElse {
+            logger.warning("Invalid sound key: $soundName")
+            return
+        }
+
+        val sound = Registry.SOUNDS.get(key)
+
+        if (sound == null) {
+            logger.warning("Unknown sound: $soundName")
+            return
+        }
 
         player.playSound(player.location, sound, 1f, 1f)
     }
@@ -545,9 +726,9 @@ class EchoWave : JavaPlugin(), Listener {
         val settings = getPlayerSettings(player)
 
         if (settings.muted) {
-            player.setPlayerListName("§7[MUTED] §r${player.name}")
+            player.playerListName(Component.text("§7[MUTED] §r${player.name}"))
         } else {
-            player.setPlayerListName(player.name)
+            player.playerListName((Component.text(player.name)))
         }
     }
 
