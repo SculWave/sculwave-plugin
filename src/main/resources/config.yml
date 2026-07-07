@@ -2,16 +2,12 @@
 # EchoWave Configuration
 # ==========================================
 
-# Unique network identifier.
-# Leave as "standalone" if this is a single server.
-instance-id: standalone
 
-# Unique backend identifier inside the network.
-# Examples:
-#   lobby
-#   survival
-#   prison
-backend-id: main
+activation-key: ""
+
+instance-id: ""
+
+backend-id: ""
 
 # ==========================================
 # Voice Moderation

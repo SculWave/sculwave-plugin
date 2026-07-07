@@ -63,27 +63,23 @@ class EchoWave : JavaPlugin(), Listener {
         logger.info("EchoWave initialized successfully!")
         logger.info("====================================")
         saveDefaultConfig()
-        config.getStringList("voice-bans")
-            .mapNotNull {
-                runCatching { UUID.fromString(it) }.getOrNull()
-            }
-            .forEach(voiceBannedPlayers::add)
 
-
-        loadBackendConfig(true)
-
-
-        if (BackendState.backendId.isBlank()) {
-            logger.severe("backend-id cannot be empty!")
-            server.pluginManager.disablePlugin(this)
-            return
-
-        }
+        loadBackendConfig()
 
         scope.launch {
-            roomMutex.withLock {
-                registerBackend()
+
+            if (BackendState.backendId.isBlank()) {
+
+                activatePlugin()
+
             }
+
+            roomMutex.withLock {
+
+                registerBackend()
+
+            }
+
         }
 
         getCommand("echo")!!.apply {
@@ -243,58 +239,15 @@ class EchoWave : JavaPlugin(), Listener {
 
     }
 
-    private fun loadBackendConfig(generateIfMissing: Boolean) {
+    private fun loadBackendConfig() {
+        BackendState.instanceId =
+            config.getString("instance-id").orEmpty()
 
-        var instanceId = config.getString("instance-id").orEmpty()
+        BackendState.backendId =
+            config.getString("backend-id").orEmpty()
 
-        if (instanceId.isBlank() || instanceId.equals("auto", true)) {
-
-            if (!generateIfMissing) {
-                logger.severe("instance-id cannot be empty!")
-                return
-            }
-
-            instanceId = UUID.randomUUID().toString()
-
-            config.set("instance-id", instanceId)
-
-            saveConfig()
-
-            logger.info("====================================")
-            logger.info("Generated new EchoWave network ID.")
-            logger.info("")
-            logger.info("Instance ID: $instanceId")
-            logger.info("")
-            logger.info("Use this same instance-id on every")
-            logger.info("server that belongs to this network.")
-            logger.info("====================================")
-        }
-
-        var backendId = config.getString("backend-id").orEmpty()
-
-        if (backendId.isBlank()) {
-
-            logger.severe("backend-id cannot be empty!")
-            return
-
-        }
-
-        if (backendId.equals("auto", true)) {
-
-            backendId = "main"
-
-            config.set("backend-id", backendId)
-
-            saveConfig()
-
-            logger.info("====================================")
-            logger.info("Using default backend-id: main")
-            logger.info("====================================")
-        }
-
-        BackendState.instanceId = instanceId
-        BackendState.backendId = backendId
     }
+
     private fun updatePositions() {
 
         if (BackendState.roomCode.isBlank() ||
@@ -674,6 +627,7 @@ class EchoWave : JavaPlugin(), Listener {
     }
 
     fun reload(sender: Player) {
+
         reloadConfig()
 
         voiceBannedPlayers.clear()
@@ -684,22 +638,32 @@ class EchoWave : JavaPlugin(), Listener {
             }
             .forEach(voiceBannedPlayers::add)
 
-        loadBackendConfig(generateIfMissing = false)
-        sender.sendMessage("§aEchoWave configuration reloaded.")
+        loadBackendConfig()
 
         scope.launch {
 
+            if (BackendState.backendId.isBlank()) {
+
+                activatePlugin()
+
+            }
+
             roomMutex.withLock {
+
                 unregisterBackend()
+
                 BackendState.roomCode = ""
                 BackendState.authToken = ""
+
                 registerBackend()
+
             }
+
         }
 
+        sender.sendMessage("§aEchoWave configuration reloaded.")
 
     }
-
     fun playConfiguredSound(player: Player, path: String) {
         if (!config.getBoolean("sounds.enabled")) return
 
@@ -732,5 +696,99 @@ class EchoWave : JavaPlugin(), Listener {
         }
     }
 
+    private suspend fun activatePlugin() {
+
+        try {
+
+            val activationKey =
+                config.getString("activation-key").orEmpty()
+
+            if (activationKey.isBlank()) {
+
+                logger.severe("activation-key cannot be empty!")
+
+                server.pluginManager.disablePlugin(this)
+
+                return
+
+            }
+
+            val requestBody = Json.encodeToString(
+
+                ActivateRequest(
+
+                    activationKey = activationKey,
+
+                    backendId = null,
+
+                    serverName = server.name,
+
+                    platform = "paper",
+
+                    pluginVersion = pluginMeta.version,
+
+                    minecraftVersion = Bukkit.getMinecraftVersion()
+
+                )
+
+            )
+
+            val request = HttpRequest.newBuilder()
+
+                .uri(
+                    URI.create(
+                        "$SERVER_URL/api/backend/activate"
+                    )
+                )
+
+                .header("Content-Type", "application/json")
+
+                .POST(
+                    HttpRequest.BodyPublishers.ofString(requestBody)
+                )
+
+                .build()
+
+            val response = Http.client.sendAsync(
+                request,
+                HttpResponse.BodyHandlers.ofString()
+            ).await()
+
+            if (response.statusCode() != 200) {
+
+                logger.severe("Plugin activation failed.")
+
+                server.pluginManager.disablePlugin(this)
+
+                return
+
+            }
+
+            val result =
+                Json.decodeFromString<ActivateResponse>(
+                    response.body()
+                )
+
+            config.set("backend-id", result.backendId)
+            config.set("instance-id", result.instanceId)
+
+            saveConfig()
+
+            BackendState.backendId = result.backendId
+            BackendState.instanceId = result.instanceId
+
+            logger.info("====================================")
+            logger.info("EchoWave activated successfully!")
+            logger.info("====================================")
+
+        } catch (e: Exception) {
+
+            logger.severe("Activation failed: ${e.message}")
+
+            server.pluginManager.disablePlugin(this)
+
+        }
+
+    }
 
 }
