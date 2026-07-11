@@ -8,5 +8,6 @@ data class BackendHeartbeatRequest(
     val backendId: String,
     val token: String,
     val timestamp: Long,
+    val voiceEnabled: Boolean,
     val players: List<PositionPayload>
 )

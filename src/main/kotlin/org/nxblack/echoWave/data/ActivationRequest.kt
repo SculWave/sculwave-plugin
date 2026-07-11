@@ -3,6 +3,7 @@ package org.nxblack.echoWave.data
 
 import kotlinx.serialization.Serializable
 
+
 @Serializable
 data class ActivateRequest(
     val activationKey: String,
@@ -10,5 +11,6 @@ data class ActivateRequest(
     val serverName: String,
     val platform: String,
     val pluginVersion: String,
-    val minecraftVersion: String
+    val minecraftVersion: String,
+    val voiceEnabled: Boolean
 )

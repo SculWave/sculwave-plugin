@@ -11,7 +11,6 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.NamespacedKey
 import org.bukkit.Registry
-import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -24,13 +23,12 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 
 class EchoWave : JavaPlugin(), Listener {
     companion object {
         const val SERVER_URL = "https://proxybedrock.onrender.com"
-        const val GROUP_CHARS ="ABCDEFGHJKLMNOPQRSTUVWXYZ03456789"
+        const val GROUP_CHARS ="ABCDEFGHJKLMNPQRSTUVWXYZ34578"
     }
 
 
@@ -38,7 +36,6 @@ class EchoWave : JavaPlugin(), Listener {
     val playerSettings = ConcurrentHashMap<UUID, PlayerSettings>()
     val groups = ConcurrentHashMap<String, Group>()
     val pendingInvites = ConcurrentHashMap<UUID, MutableList<GroupInvite>>()
-    private val uploading = AtomicBoolean(false)
     private val roomMutex = Mutex()
     private val voiceBannedPlayers = ConcurrentHashMap.newKeySet<UUID>()
 
@@ -67,17 +64,9 @@ class EchoWave : JavaPlugin(), Listener {
         loadBackendConfig()
 
         scope.launch {
-
-            if (BackendState.backendId.isBlank()) {
-
-                activatePlugin()
-
-            }
-
+            activatePlugin()
             roomMutex.withLock {
-
                 registerBackend()
-
             }
 
         }
@@ -111,8 +100,9 @@ class EchoWave : JavaPlugin(), Listener {
         try {
             val body = Json.encodeToString(
                 BackendRegisterRequest(
-                    BackendState.instanceId,
-                    BackendState.backendId
+                    instanceId = BackendState.instanceId,
+                    backendId = BackendState.backendId,
+                    voiceEnabled = config.getBoolean("voice-enabled")
                 )
             )
 
@@ -159,6 +149,7 @@ class EchoWave : JavaPlugin(), Listener {
                 backendId = BackendState.backendId,
                 token = BackendState.authToken,
                 timestamp = System.currentTimeMillis(),
+                voiceEnabled = config.getBoolean("voice-enabled"),
                 players = players
             )
             val body = Json.encodeToString(payload)
@@ -214,7 +205,8 @@ class EchoWave : JavaPlugin(), Listener {
             val body = Json.encodeToString(
                 BackendRegisterRequest(
                     instanceId = BackendState.instanceId,
-                    backendId = BackendState.backendId
+                    backendId = BackendState.backendId,
+                    voiceEnabled = config.getBoolean("voice-enabled")
                 )
             )
 
@@ -245,7 +237,6 @@ class EchoWave : JavaPlugin(), Listener {
 
         BackendState.backendId =
             config.getString("backend-id").orEmpty()
-
     }
 
     private fun updatePositions() {
@@ -641,6 +632,8 @@ class EchoWave : JavaPlugin(), Listener {
         loadBackendConfig()
 
         scope.launch {
+            BackendState.backendId = ""
+            BackendState.instanceId = ""
 
             if (BackendState.backendId.isBlank()) {
 
@@ -699,56 +692,30 @@ class EchoWave : JavaPlugin(), Listener {
     private suspend fun activatePlugin() {
 
         try {
-
             val activationKey =
                 config.getString("activation-key").orEmpty()
-
             if (activationKey.isBlank()) {
-
                 logger.severe("activation-key cannot be empty!")
-
                 server.pluginManager.disablePlugin(this)
-
                 return
-
             }
-
             val requestBody = Json.encodeToString(
-
                 ActivateRequest(
-
                     activationKey = activationKey,
-
-                    backendId = null,
-
+                    backendId = BackendState.backendId.ifBlank { null },
                     serverName = server.name,
-
                     platform = "paper",
-
                     pluginVersion = pluginMeta.version,
-
-                    minecraftVersion = Bukkit.getMinecraftVersion()
-
+                    minecraftVersion = Bukkit.getMinecraftVersion(),
+                    voiceEnabled = config.getBoolean("voice-enabled")
                 )
-
             )
 
             val request = HttpRequest.newBuilder()
-
-                .uri(
-                    URI.create(
-                        "$SERVER_URL/api/backend/activate"
-                    )
-                )
-
+                .uri(URI.create("$SERVER_URL/api/backend/activate"))
                 .header("Content-Type", "application/json")
-
-                .POST(
-                    HttpRequest.BodyPublishers.ofString(requestBody)
-                )
-
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build()
-
             val response = Http.client.sendAsync(
                 request,
                 HttpResponse.BodyHandlers.ofString()
@@ -756,39 +723,26 @@ class EchoWave : JavaPlugin(), Listener {
 
             if (response.statusCode() != 200) {
 
-                logger.severe("Plugin activation failed.")
-
+                logger.severe("Plugin activation failed. HTTP ${response.statusCode()}")
+                logger.severe("Response: ${response.body()}")
                 server.pluginManager.disablePlugin(this)
 
                 return
-
             }
-
-            val result =
-                Json.decodeFromString<ActivateResponse>(
-                    response.body()
-                )
-
-            config.set("backend-id", result.backendId)
+            val result = Json.decodeFromString<ActivateResponse>(response.body())
             config.set("instance-id", result.instanceId)
-
+            config.set("backend-id", result.backendId)
             saveConfig()
 
-            BackendState.backendId = result.backendId
             BackendState.instanceId = result.instanceId
-
+            BackendState.backendId = result.backendId
             logger.info("====================================")
             logger.info("EchoWave activated successfully!")
             logger.info("====================================")
 
         } catch (e: Exception) {
-
             logger.severe("Activation failed: ${e.message}")
-
             server.pluginManager.disablePlugin(this)
-
         }
-
     }
-
 }

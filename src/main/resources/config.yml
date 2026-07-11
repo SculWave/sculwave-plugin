@@ -1,18 +1,34 @@
 # ==========================================
 # EchoWave Configuration
 # ==========================================
-
+# Your unique activation key from the EchoWave Dashboard.
+# The plugin will automatically generate and cache the
+# instance ID and backend ID after successful activation.
 
 activation-key: ""
 
+# Automatically managed by EchoWave.
+# Do not edit these values manually.
 instance-id: ""
-
 backend-id: ""
+
+# Enables or disables voice chat for this Minecraft server.
+#
+# true  - Players receive LiveKit voice and can communicate.
+# false - Players remain connected to the EchoWave network and
+#         automatic server switching still works, but no voice
+#         session is created while they are on this server.
+#
+# This is useful for hubs, lobbies, AFK servers, minigames,
+# or any server where voice chat should be disabled.
+voice-enabled: true
 
 # ==========================================
 # Voice Moderation
 # ==========================================
 
+# UUIDs of players permanently banned from using EchoWave voice.
+# Managed automatically by in-game moderation commands.
 voice-bans: []
 
 # ==========================================
@@ -33,4 +49,5 @@ sounds:
 # Debug
 # ==========================================
 
+# Enables additional diagnostic logging.
 debug: false
