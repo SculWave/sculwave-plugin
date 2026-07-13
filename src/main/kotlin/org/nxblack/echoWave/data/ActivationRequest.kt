@@ -12,5 +12,4 @@ data class ActivateRequest(
     val platform: String,
     val pluginVersion: String,
     val minecraftVersion: String,
-    val voiceEnabled: Boolean
 )

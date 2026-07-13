@@ -102,7 +102,6 @@ class EchoWave : JavaPlugin(), Listener {
                 BackendRegisterRequest(
                     instanceId = BackendState.instanceId,
                     backendId = BackendState.backendId,
-                    voiceEnabled = config.getBoolean("voice-enabled")
                 )
             )
 
@@ -152,6 +151,9 @@ class EchoWave : JavaPlugin(), Listener {
                 voiceEnabled = config.getBoolean("voice-enabled"),
                 players = players
             )
+
+            logger.info("voice-enabled" + config.getBoolean("voice-enabled").toString())
+
             val body = Json.encodeToString(payload)
             val request = HttpRequest.newBuilder()
                 .uri(URI.create("$SERVER_URL/api/backend/heartbeat"))
@@ -206,7 +208,6 @@ class EchoWave : JavaPlugin(), Listener {
                 BackendRegisterRequest(
                     instanceId = BackendState.instanceId,
                     backendId = BackendState.backendId,
-                    voiceEnabled = config.getBoolean("voice-enabled")
                 )
             )
 
@@ -707,7 +708,6 @@ class EchoWave : JavaPlugin(), Listener {
                     platform = "paper",
                     pluginVersion = pluginMeta.version,
                     minecraftVersion = Bukkit.getMinecraftVersion(),
-                    voiceEnabled = config.getBoolean("voice-enabled")
                 )
             )
 

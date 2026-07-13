@@ -6,5 +6,4 @@ import kotlinx.serialization.Serializable
 data class BackendRegisterRequest(
     val instanceId: String,
     val backendId: String,
-    val voiceEnabled: Boolean
 )
