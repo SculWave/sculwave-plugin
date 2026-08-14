@@ -1,7 +1,6 @@
 package org.nxblack.echoWave
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
@@ -18,16 +17,21 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import org.nxblack.echoWave.data.*
+import org.nxblack.echoWave.data.BackendState.backendId
+import org.nxblack.echoWave.data.BackendState.instanceId
+import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Level
 import kotlin.coroutines.cancellation.CancellationException
 
 class EchoWave : JavaPlugin(), Listener {
     companion object {
-        const val SERVER_URL = "https://proxybedrock.onrender.com"
+        const val SERVER_URL = "http://localhost:3000"
         const val GROUP_CHARS ="ABCDEFGHJKLMNPQRSTUVWXYZ34578"
     }
 
@@ -38,6 +42,9 @@ class EchoWave : JavaPlugin(), Listener {
     val pendingInvites = ConcurrentHashMap<UUID, MutableList<GroupInvite>>()
     private val roomMutex = Mutex()
     private val voiceBannedPlayers = ConcurrentHashMap.newKeySet<UUID>()
+
+    private lateinit var backendSocket: BackendSocketClient
+
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
@@ -62,12 +69,38 @@ class EchoWave : JavaPlugin(), Listener {
         saveDefaultConfig()
 
         loadBackendConfig()
-
         scope.launch {
-            activatePlugin()
-            roomMutex.withLock {
-                registerBackend()
+
+            if (!checkServer()) {
+                Bukkit.getScheduler().runTask(
+                    this@EchoWave,
+                    Runnable {
+                        server.pluginManager.disablePlugin(this@EchoWave)
+                    }
+                )
+                return@launch
             }
+
+            if (!activatePlugin()) {
+                Bukkit.getScheduler().runTask(
+                    this@EchoWave,
+                    Runnable {
+                        server.pluginManager.disablePlugin(this@EchoWave)
+                    }
+                )
+                return@launch
+            }
+
+            backendSocket = BackendSocketClient(
+                plugin = this@EchoWave,
+                serverUrl = SERVER_URL,
+                backendId = backendId,
+                instanceId = instanceId
+            )
+
+            backendSocket.connect()
+
+
 
         }
 
@@ -88,149 +121,11 @@ class EchoWave : JavaPlugin(), Listener {
     }
 
     override fun onDisable() {
-
-            runBlocking {
-                unregisterBackend()
-            }
-            scope.cancel()
+        backendSocket.disconnect()
+        scope.cancel()
 
     }
 
-    private suspend fun registerBackend() {
-        try {
-            val body = Json.encodeToString(
-                BackendRegisterRequest(
-                    instanceId = BackendState.instanceId,
-                    backendId = BackendState.backendId,
-                )
-            )
-
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create("$SERVER_URL/api/backend/register"))
-            .headers("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build()
-
-        val response = Http.client.sendAsync(
-            request,
-            HttpResponse.BodyHandlers.ofString()
-        ).await()
-            if (response.statusCode() != 200) {
-                logger.warning("HTTP ${response.statusCode()}")
-                return
-            }
-            if (response.body().isBlank()) {
-                logger.warning("Empty response")
-                return
-            }
-        val json = Json.decodeFromString<CreateRoomResponse>(response.body())
-            BackendState.roomCode = json.roomCode
-            BackendState.authToken = json.token
-            logger.info("====================================")
-            logger.info("EchoWave room created successfully!")
-            logger.info("Room Code: ${BackendState.roomCode}")
-            logger.info("====================================")
-        }
-        catch (e: CancellationException) {
-            throw e
-        }
-        catch (e: Exception) {
-            logger.warning("Failed to create room: ${e.message}")
-        }
-
-    }
-
-    private suspend fun sendHeartbeat(players: List<PositionPayload>) {
-
-        try {
-            val payload = BackendHeartbeatRequest(
-                instanceId = BackendState.instanceId,
-                backendId = BackendState.backendId,
-                token = BackendState.authToken,
-                timestamp = System.currentTimeMillis(),
-                voiceEnabled = config.getBoolean("voice-enabled"),
-                players = players
-            )
-
-            logger.info("voice-enabled" + config.getBoolean("voice-enabled").toString())
-
-            val body = Json.encodeToString(payload)
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create("$SERVER_URL/api/backend/heartbeat"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build()
-
-            val response = Http.client.sendAsync(
-                request,
-                HttpResponse.BodyHandlers.ofString()
-            ).await()
-            if (response.statusCode() != 200) {
-                logger.warning("HTTP ${response.statusCode()}")
-                return
-            }
-            if (response.body().isBlank()) {
-                logger.warning("Empty response")
-                return
-            }
-
-            val result = Json.decodeFromString<UpdateResponse>(response.body())
-            if (
-                result.error == "BACKEND_NOT_FOUND" ||
-                result.error == "AUTH_FAILED"
-            ) {
-
-                BackendState.roomCode = ""
-                BackendState.authToken = ""
-
-                roomMutex.withLock {
-
-                    if (BackendState.roomCode.isBlank()) {
-                        registerBackend()
-                    }
-
-                }
-            }
-        }
-        catch (e: CancellationException) {
-            throw e
-        }
-        catch (e: Exception) {
-            logger.warning("Failed to update positions: ${e.message}")
-        }
-
-    }
-
-    private suspend fun unregisterBackend() {
-
-        try {
-
-            val body = Json.encodeToString(
-                BackendRegisterRequest(
-                    instanceId = BackendState.instanceId,
-                    backendId = BackendState.backendId,
-                )
-            )
-
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create("$SERVER_URL/api/backend/unregister"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build()
-
-            Http.client.sendAsync(
-                request,
-                HttpResponse.BodyHandlers.discarding()
-            ).await()
-
-        }
-        catch (e: CancellationException) {
-            throw e
-        }
-        catch (e: Exception) {
-            logger.warning("Failed to unregister backend: ${e.message}")
-        }
-
-    }
 
     private fun loadBackendConfig() {
         BackendState.instanceId =
@@ -263,10 +158,13 @@ class EchoWave : JavaPlugin(), Listener {
         }
 
         scope.launch {
-            sendHeartbeat(payload)
+
+            backendSocket.sendHeartbeat(
+                payload,
+                config.getBoolean("voice-enabled")
+            )
         }
     }
-
 
 
     private fun startFoliaScheduler() {
@@ -633,31 +531,32 @@ class EchoWave : JavaPlugin(), Listener {
         loadBackendConfig()
 
         scope.launch {
-            BackendState.backendId = ""
-            BackendState.instanceId = ""
+            backendId = ""
+            instanceId = ""
 
-            if (BackendState.backendId.isBlank()) {
+            if (backendId.isBlank()) {
 
                 activatePlugin()
 
             }
 
-            roomMutex.withLock {
+            backendSocket.disconnect()
 
-                unregisterBackend()
+            backendSocket = BackendSocketClient(
+                plugin = this@EchoWave,
+                serverUrl = SERVER_URL,
+                backendId = backendId,
+                instanceId = instanceId
+            )
 
-                BackendState.roomCode = ""
-                BackendState.authToken = ""
-
-                registerBackend()
-
-            }
+            backendSocket.connect()
 
         }
 
         sender.sendMessage("§aEchoWave configuration reloaded.")
 
     }
+
     fun playConfiguredSound(player: Player, path: String) {
         if (!config.getBoolean("sounds.enabled")) return
 
@@ -690,7 +589,7 @@ class EchoWave : JavaPlugin(), Listener {
         }
     }
 
-    private suspend fun activatePlugin() {
+    private suspend fun activatePlugin() : Boolean {
 
         try {
             val activationKey =
@@ -698,7 +597,7 @@ class EchoWave : JavaPlugin(), Listener {
             if (activationKey.isBlank()) {
                 logger.severe("activation-key cannot be empty!")
                 server.pluginManager.disablePlugin(this)
-                return
+                return false
             }
             val requestBody = Json.encodeToString(
                 ActivateRequest(
@@ -716,10 +615,19 @@ class EchoWave : JavaPlugin(), Listener {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build()
-            val response = Http.client.sendAsync(
-                request,
-                HttpResponse.BodyHandlers.ofString()
-            ).await()
+
+
+            logger.info("========== ACTIVATE ==========")
+            logger.info("SERVER_URL = $SERVER_URL")
+            logger.info("URI = ${request.uri()}")
+            logger.info("BODY = $requestBody")
+            val response = withContext(Dispatchers.IO) {
+                Http.client.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString()
+                )
+            }
+
 
             if (response.statusCode() != 200) {
 
@@ -727,7 +635,7 @@ class EchoWave : JavaPlugin(), Listener {
                 logger.severe("Response: ${response.body()}")
                 server.pluginManager.disablePlugin(this)
 
-                return
+                return false
             }
             val result = Json.decodeFromString<ActivateResponse>(response.body())
             config.set("instance-id", result.instanceId)
@@ -741,8 +649,40 @@ class EchoWave : JavaPlugin(), Listener {
             logger.info("====================================")
 
         } catch (e: Exception) {
-            logger.severe("Activation failed: ${e.message}")
-            server.pluginManager.disablePlugin(this)
+            logger.log(Level.SEVERE, "Activation failed", e)
+            return false
+        }
+
+
+        return true
+    }
+
+    private fun checkServer(): Boolean {
+        return try {
+            val connection = URL("$SERVER_URL/health").openConnection() as HttpURLConnection
+
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            val code = connection.responseCode
+
+            val stream =
+                if (code in 200..299)
+                    connection.inputStream
+                else
+                    connection.errorStream
+
+            val body = stream?.bufferedReader()?.use { it.readText() }
+
+            logger.info("Status = $code")
+            logger.info(body ?: "No body")
+
+            code == HttpURLConnection.HTTP_OK
+
+        } catch (e: Exception) {
+            logger.log(Level.SEVERE, "Health check failed", e)
+            false
         }
     }
 }
