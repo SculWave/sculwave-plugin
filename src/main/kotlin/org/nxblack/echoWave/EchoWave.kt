@@ -1,8 +1,8 @@
+@file:Suppress("DEPRECATION")
+
 package org.nxblack.echoWave
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -19,6 +19,9 @@ import org.bukkit.plugin.java.JavaPlugin
 import org.nxblack.echoWave.data.*
 import org.nxblack.echoWave.data.BackendState.backendId
 import org.nxblack.echoWave.data.BackendState.instanceId
+import org.nxblack.echoWave.voice.VoiceIndicatorManager
+import org.nxblack.echoWave.voice.VoiceNameplateManager
+import org.nxblack.echoWave.voice.VoiceStatusDisplay
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -27,11 +30,10 @@ import java.net.http.HttpResponse
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
-import kotlin.coroutines.cancellation.CancellationException
 
 class EchoWave : JavaPlugin(), Listener {
     companion object {
-        const val SERVER_URL = "http://localhost:3000"
+        const val SERVER_URL = "http://129.121.120.245:80"
         const val GROUP_CHARS ="ABCDEFGHJKLMNPQRSTUVWXYZ34578"
     }
 
@@ -40,26 +42,34 @@ class EchoWave : JavaPlugin(), Listener {
     val playerSettings = ConcurrentHashMap<UUID, PlayerSettings>()
     val groups = ConcurrentHashMap<String, Group>()
     val pendingInvites = ConcurrentHashMap<UUID, MutableList<GroupInvite>>()
-    private val roomMutex = Mutex()
     private val voiceBannedPlayers = ConcurrentHashMap.newKeySet<UUID>()
-
+    val voiceStateManager = VoiceStateManager()
+    val voiceIndicatorManager = VoiceIndicatorManager(this)
     private lateinit var backendSocket: BackendSocketClient
-
+    val voiceStatusDisplay = VoiceStatusDisplay(this)
+    val voiceNameplateManager = VoiceNameplateManager(this)
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
         pendingInvites.remove(event.player.uniqueId)
         playerSettings.remove(event.player.uniqueId)
+
+        voiceIndicatorManager.clear(event.player)
+        voiceNameplateManager.clear(event.player)
     }
 
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
+        val player = event.player
 
-        if (BackendState.roomCode.isBlank())
+        if (BackendState.roomCode.isBlank()) {
             return
+        }
 
-        event.player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
-        event.player.sendMessage("§7Use this code in the EchoWave app.")
+        player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
+        player.sendMessage("§7Use this code in the EchoWave app.")
+
+        voiceIndicatorManager.update(player)
     }
 
     override fun onEnable() {
@@ -112,26 +122,42 @@ class EchoWave : JavaPlugin(), Listener {
 
         server.pluginManager.registerEvents(this,this)
 
+        voiceStateManager.subscribe { state ->
+            server.getPlayerExact(state.gamertag)?.let { target ->
+
+                Bukkit.getOnlinePlayers()
+                    .filter { it.uniqueId != target.uniqueId }
+                    .forEach { viewer ->
+                        voiceNameplateManager.update(
+                            viewer = viewer,
+                            target = target,
+                            speaking = state.speaking
+                        )
+                    }
+            }
+        }
         if (Platform.isFolia) {
             startFoliaScheduler()
         } else {
             startBukkitScheduler()
         }
 
+
     }
 
     override fun onDisable() {
+        voiceNameplateManager.clearAll()
+        voiceIndicatorManager.clearAll()
         backendSocket.disconnect()
         scope.cancel()
-
     }
 
 
     private fun loadBackendConfig() {
-        BackendState.instanceId =
+        instanceId =
             config.getString("instance-id").orEmpty()
 
-        BackendState.backendId =
+        backendId =
             config.getString("backend-id").orEmpty()
     }
 
@@ -602,7 +628,7 @@ class EchoWave : JavaPlugin(), Listener {
             val requestBody = Json.encodeToString(
                 ActivateRequest(
                     activationKey = activationKey,
-                    backendId = BackendState.backendId.ifBlank { null },
+                    backendId = backendId.ifBlank { null },
                     serverName = server.name,
                     platform = "paper",
                     pluginVersion = pluginMeta.version,
@@ -642,8 +668,8 @@ class EchoWave : JavaPlugin(), Listener {
             config.set("backend-id", result.backendId)
             saveConfig()
 
-            BackendState.instanceId = result.instanceId
-            BackendState.backendId = result.backendId
+            instanceId = result.instanceId
+            backendId = result.backendId
             logger.info("====================================")
             logger.info("EchoWave activated successfully!")
             logger.info("====================================")

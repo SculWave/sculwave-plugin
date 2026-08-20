@@ -3,14 +3,14 @@ package org.nxblack.echoWave
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.engineio.client.transports.WebSocket
-import org.bukkit.plugin.java.JavaPlugin
 import org.json.JSONArray
 import org.json.JSONObject
 import org.nxblack.echoWave.data.BackendState
 import org.nxblack.echoWave.data.PositionPayload
+import org.nxblack.echoWave.data.VoicePlayerState
 
 class BackendSocketClient(
-    private val plugin: JavaPlugin,
+    private val plugin: EchoWave,
     private val serverUrl: String,
     private val backendId: String,
     private val instanceId: String,
@@ -128,6 +128,24 @@ class BackendSocketClient(
 
         }
 
+        socket.on("voice-state") { args ->
+            val json = args.firstOrNull() as? JSONObject ?: return@on
+
+            val state = VoicePlayerState(
+                roomCode = json.optString("roomCode"),
+                gamertag = json.optString("gamertag"),
+                connected = json.optBoolean("connected"),
+                muted = json.optBoolean("muted"),
+                speaking = json.optBoolean("speaking"),
+                timestamp = json.optLong("timestamp")
+            )
+            plugin.voiceStateManager.update(state)
+
+            plugin.logger.info(
+                "[VoiceState] ${state.gamertag} connected=${state.connected} muted=${state.muted} speaking=${state.speaking}"
+            )
+        }
+
 
         socket.on(Socket.EVENT_CONNECT_ERROR) { args ->
 
@@ -150,12 +168,6 @@ class BackendSocketClient(
         }
 
         socket.connect()
-
-    }
-
-    fun isAuthenticated(): Boolean {
-
-        return authenticated
 
     }
 
