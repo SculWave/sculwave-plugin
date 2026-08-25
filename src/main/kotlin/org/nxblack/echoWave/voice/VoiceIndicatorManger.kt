@@ -2,17 +2,16 @@ package org.nxblack.echoWave.voice
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
-import org.bukkit.Bukkit
 import org.bukkit.entity.Display
 import org.bukkit.entity.Player
 import org.bukkit.entity.TextDisplay
 import org.bukkit.util.Transformation
 import org.joml.Vector3f
-import org.nxblack.echoWave.EchoWave
+import org.nxblack.echoWave.SculWave
 import java.util.UUID
 
 class VoiceIndicatorManager(
-    private val plugin: EchoWave
+    private val plugin: SculWave
 ) {
     private val indicators = mutableMapOf<UUID, TextDisplay>()
     private val updateScheduled = mutableSetOf<UUID>()

@@ -6,7 +6,7 @@ import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
 import org.bukkit.entity.Player
 
-class EchoTabCompleter(private val plugin: EchoWave) : TabCompleter {
+class TabCompleter(private val plugin: SculWave) : TabCompleter {
     companion object {
         private val PLAYER_COMMANDS = setOf(
             "invite",
@@ -35,7 +35,7 @@ class EchoTabCompleter(private val plugin: EchoWave) : TabCompleter {
                     "transfer"
                 )
 
-                if (sender.hasPermission("echowave.admin")) {
+                if (sender.hasPermission("sculwave.admin")) {
                     commands += listOf(
                         "voiceban",
                         "voiceunban",

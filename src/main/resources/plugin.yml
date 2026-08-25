@@ -1,14 +1,14 @@
-name: EchoWave
+name: SculWave
 version: '${version}'
 
-main: org.nxblack.echoWave.EchoWave
+main: org.nxblack.echoWave.SculWave
 api-version: '26.1'
 commands:
-  echo:
-    description: EchoWave Voice
+  voice:
+    description: SculWave Voice
     usage: /echo
 permissions:
-  echowave.admin:
-    description: Allows administrative EchoWave commands
+  sculwave.admin:
+    description: Allows administrative SculWave commands
     default: op
 folia-supported: true

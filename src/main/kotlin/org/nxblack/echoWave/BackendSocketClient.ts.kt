@@ -10,7 +10,7 @@ import org.nxblack.echoWave.data.PositionPayload
 import org.nxblack.echoWave.data.VoicePlayerState
 
 class BackendSocketClient(
-    private val plugin: EchoWave,
+    private val plugin: SculWave,
     private val serverUrl: String,
     private val backendId: String,
     private val instanceId: String,
@@ -73,7 +73,7 @@ class BackendSocketClient(
             BackendState.authToken = token
 
             plugin.logger.info("====================================")
-            plugin.logger.info("EchoWave room created successfully!")
+            plugin.logger.info("sculwave room created successfully!")
             plugin.logger.info("Room Code: $roomCode")
             plugin.logger.info("====================================")
 

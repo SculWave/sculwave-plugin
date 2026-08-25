@@ -7,7 +7,7 @@ import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 
-class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
+class Command(private val plugin: SculWave) : CommandExecutor {
 
     override fun onCommand(
         sender: CommandSender,
@@ -23,26 +23,26 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
 
         if (plugin.isVoiceBanned(sender) &&
             subcommand !in setOf("voiceban", "voiceunban", "voicecheck")) {
-            sender.sendMessage("§c[EchoWave] You are banned from voice chat.")
+            sender.sendMessage("§c[SculWave] You are banned from voice chat.")
             return true
         }
 
         if (args.isEmpty()) {
-            sender.sendMessage("§bEchoWave")
-            sender.sendMessage("§7/echo mute")
-            sender.sendMessage("§7/echo invite <player>")
-            sender.sendMessage("§7/echo join <code>")
-            sender.sendMessage("§7/echo leave")
-            sender.sendMessage("§7/echo members")
-            sender.sendMessage("/echo kick <player>")
-            sender.sendMessage("/echo transfer <player>")
+            sender.sendMessage("§SculWave")
+            sender.sendMessage("§7/voice mute")
+            sender.sendMessage("§7/voice invite <player>")
+            sender.sendMessage("§7/voice join <code>")
+            sender.sendMessage("§7/voice leave")
+            sender.sendMessage("§7/voice members")
+            sender.sendMessage("/voice kick <player>")
+            sender.sendMessage("/voice transfer <player>")
             return true
         }
-        if (sender.hasPermission("echowave.admin")) {
-            sender.sendMessage("§7/echo voiceban <player>")
-            sender.sendMessage("§7/echo voiceunban <player>")
-            sender.sendMessage("§7/echo voicecheck <player>")
-            sender.sendMessage("§7/echo reload")
+        if (sender.hasPermission("sculwave.admin")) {
+            sender.sendMessage("§7/voice voiceban <player>")
+            sender.sendMessage("§7/voice voiceunban <player>")
+            sender.sendMessage("§7/voice voicecheck <player>")
+            sender.sendMessage("§7/voice reload")
         }
 
         when (args[0].lowercase()) {
@@ -104,7 +104,7 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
 
             "voiceban" -> {
 
-                if (!sender.hasPermission("echowave.admin")) {
+                if (!sender.hasPermission("sculwave.admin")) {
                     sender.sendMessage("§cNo permission.")
                     return true
                 }
@@ -124,13 +124,13 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
                 plugin.setVoiceBan(target, true)
 
                 Bukkit.broadcast(
-                    Component.text("§c[EchoWave] ${target.name} has been banned from voice chat.")
+                    Component.text("§c[SculWave] ${target.name} has been banned from voice chat.")
                 )
             }
 
             "voiceunban" -> {
 
-                if (!sender.hasPermission("echowave.admin")) {
+                if (!sender.hasPermission("sculwave.admin")) {
                     sender.sendMessage("§cNo permission.")
                     return true
                 }
@@ -150,13 +150,13 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
                 plugin.setVoiceBan(target, false)
 
                 Bukkit.broadcast(
-                    Component.text("§a[EchoWave] ${target.name} has been unbanned from voice chat.")
+                    Component.text("§a[SculWave] ${target.name} has been unbanned from voice chat.")
                 )
             }
 
             "voicecheck" -> {
 
-                if (!sender.hasPermission("echowave.admin")) {
+                if (!sender.hasPermission("sculwave.admin")) {
                     sender.sendMessage("§cNo permission.")
                     return true
                 }
@@ -183,7 +183,7 @@ class EchoCommand(private val plugin: EchoWave) : CommandExecutor {
 
             "reload" -> {
 
-                if (!sender.hasPermission("echowave.admin")) {
+                if (!sender.hasPermission("sculwave.admin")) {
                     sender.sendMessage("§cNo permission.")
                     return true
                 }

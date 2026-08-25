@@ -1,13 +1,13 @@
 # ==========================================
-# EchoWave Configuration
+# SculWave Configuration
 # ==========================================
-# Your unique activation key from the EchoWave Dashboard.
+# Your unique activation key from the SculWave Dashboard.
 # The plugin will automatically generate and cache the
 # instance ID and backend ID after successful activation.
 
 activation-key: ""
 
-# Automatically managed by EchoWave.
+# Automatically managed by SculWave.
 # Do not edit these values manually.
 instance-id: ""
 backend-id: ""
@@ -15,7 +15,7 @@ backend-id: ""
 # Enables or disables voice chat for this Minecraft server.
 #
 # true  - Players receive LiveKit voice and can communicate.
-# false - Players remain connected to the EchoWave network and
+# false - Players remain connected to the SculWave network and
 #         automatic server switching still works, but no voice
 #         session is created while they are on this server.
 #
@@ -27,7 +27,7 @@ voice-enabled: true
 # Voice Moderation
 # ==========================================
 
-# UUIDs of players permanently banned from using EchoWave voice.
+# UUIDs of players permanently banned from using SculWave voice.
 # Managed automatically by in-game moderation commands.
 voice-bans: []
 

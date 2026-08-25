@@ -3,9 +3,9 @@ package org.nxblack.echoWave.voice
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.entity.Player
-import org.nxblack.echoWave.EchoWave
+import org.nxblack.echoWave.SculWave
 
-class VoiceStatusDisplay(private val plugin: EchoWave) {
+class VoiceStatusDisplay(private val plugin: SculWave) {
 
     fun update(player: Player) {
         val state = plugin.voiceStateManager.get(player.name)

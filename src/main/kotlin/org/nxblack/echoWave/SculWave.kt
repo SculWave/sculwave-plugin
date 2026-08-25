@@ -21,7 +21,6 @@ import org.nxblack.echoWave.data.BackendState.backendId
 import org.nxblack.echoWave.data.BackendState.instanceId
 import org.nxblack.echoWave.voice.VoiceIndicatorManager
 import org.nxblack.echoWave.voice.VoiceNameplateManager
-import org.nxblack.echoWave.voice.VoiceStatusDisplay
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -31,9 +30,9 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 
-class EchoWave : JavaPlugin(), Listener {
+class SculWave : JavaPlugin(), Listener {
     companion object {
-        const val SERVER_URL = "http://129.121.120.245:80"
+        const val SERVER_URL = "https://sculwave.com"
         const val GROUP_CHARS ="ABCDEFGHJKLMNPQRSTUVWXYZ34578"
     }
 
@@ -46,7 +45,6 @@ class EchoWave : JavaPlugin(), Listener {
     val voiceStateManager = VoiceStateManager()
     val voiceIndicatorManager = VoiceIndicatorManager(this)
     private lateinit var backendSocket: BackendSocketClient
-    val voiceStatusDisplay = VoiceStatusDisplay(this)
     val voiceNameplateManager = VoiceNameplateManager(this)
 
     @EventHandler
@@ -67,14 +65,14 @@ class EchoWave : JavaPlugin(), Listener {
         }
 
         player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
-        player.sendMessage("§7Use this code in the EchoWave app.")
+        player.sendMessage("§7Use this code in the SculWave app.")
 
         voiceIndicatorManager.update(player)
     }
 
     override fun onEnable() {
         logger.info("====================================")
-        logger.info("EchoWave initialized successfully!")
+        logger.info("SculWave initialized successfully!")
         logger.info("====================================")
         saveDefaultConfig()
 
@@ -83,9 +81,9 @@ class EchoWave : JavaPlugin(), Listener {
 
             if (!checkServer()) {
                 Bukkit.getScheduler().runTask(
-                    this@EchoWave,
+                    this@SculWave,
                     Runnable {
-                        server.pluginManager.disablePlugin(this@EchoWave)
+                        server.pluginManager.disablePlugin(this@SculWave)
                     }
                 )
                 return@launch
@@ -93,16 +91,16 @@ class EchoWave : JavaPlugin(), Listener {
 
             if (!activatePlugin()) {
                 Bukkit.getScheduler().runTask(
-                    this@EchoWave,
+                    this@SculWave,
                     Runnable {
-                        server.pluginManager.disablePlugin(this@EchoWave)
+                        server.pluginManager.disablePlugin(this@SculWave)
                     }
                 )
                 return@launch
             }
 
             backendSocket = BackendSocketClient(
-                plugin = this@EchoWave,
+                plugin = this@SculWave,
                 serverUrl = SERVER_URL,
                 backendId = backendId,
                 instanceId = instanceId
@@ -115,8 +113,8 @@ class EchoWave : JavaPlugin(), Listener {
         }
 
         getCommand("echo")!!.apply {
-            setExecutor(EchoCommand(this@EchoWave))
-            tabCompleter = EchoTabCompleter(this@EchoWave)
+            setExecutor(Command(this@SculWave))
+            tabCompleter = TabCompleter(this@SculWave)
         }
 
 
@@ -359,7 +357,7 @@ class EchoWave : JavaPlugin(), Listener {
             player.sendMessage("§cYou are not in a group.")
             return
         }
-        player.sendMessage("§b===== EchoWave Group =====")
+        player.sendMessage("§b===== SculWave Group =====")
         player.sendMessage(
             "§eOwner: ${
                 Bukkit.getOfflinePlayer(group.owner).name
@@ -382,7 +380,7 @@ class EchoWave : JavaPlugin(), Listener {
         val settings = getPlayerSettings(player)
 
         if (!settings.groupId.isNullOrBlank()) {
-            player.sendMessage("§c[Echowave] Leave your current Group first.")
+            player.sendMessage("§c[SculWave] Leave your current Group first.")
             return
         }
 
@@ -393,7 +391,7 @@ class EchoWave : JavaPlugin(), Listener {
             joinCode = groupId
         )
         settings.groupId = groupId
-        player.sendMessage("§a[Echowave] Group created")
+        player.sendMessage("§a[SculWave] Group created")
 
 
     }
@@ -408,7 +406,7 @@ class EchoWave : JavaPlugin(), Listener {
         val group = groups[settings.groupId] ?: return
 
         if(group.owner != player.uniqueId){
-            player.sendMessage("§c[Echowave] Only the group owner can invite players.")
+            player.sendMessage("§c[SculWave] Only the group owner can invite players.")
             return
         }
 
@@ -416,17 +414,17 @@ class EchoWave : JavaPlugin(), Listener {
             .find { it.name.equals(target, ignoreCase = true) }
 
         if(inPlayer == null){
-            player.sendMessage("§c[Echowave] $target is not online.")
+            player.sendMessage("§c[SculWave] $target is not online.")
             return
         }
 
         if(inPlayer.name == player.name){
-            player.sendMessage("§c[Echowave] You cannot invite yourself.")
+            player.sendMessage("§c[SculWave] You cannot invite yourself.")
             return
         }
 
         if(inPlayer.uniqueId in group.members){
-            player.sendMessage("§e[Echowave] ${inPlayer.name} is already in your Group.")
+            player.sendMessage("§e[SculWave] ${inPlayer.name} is already in your Group.")
             return
         }
 
@@ -436,13 +434,13 @@ class EchoWave : JavaPlugin(), Listener {
             invite.partyId == settings.groupId
         }
         if (alreadyInvited) {
-            player.sendMessage("§e[Echowave] ${inPlayer.name} already has an invite.")
+            player.sendMessage("§e[SculWave] ${inPlayer.name} already has an invite.")
             return
         }
         invites.add(GroupInvite(partyId = settings.groupId!!, code = group.joinCode))
 
-        inPlayer.sendMessage("§a[Echowave] ${player.name} invited you to a Group. §b${group.joinCode}")
-        player.sendMessage("§a[Echowave] Invite sent to ${inPlayer.name}.")
+        inPlayer.sendMessage("§a[SculWave] ${player.name} invited you to a Group. §b${group.joinCode}")
+        player.sendMessage("§a[SculWave] Invite sent to ${inPlayer.name}.")
         playConfiguredSound(inPlayer,"sounds.invite")
         playConfiguredSound(player,"sounds.invite-sent")
 
@@ -453,14 +451,14 @@ class EchoWave : JavaPlugin(), Listener {
         val settings = getPlayerSettings(player)
 
         val groupId = settings.groupId ?: run {
-            player.sendMessage("§c[Echowave] You are not in a Group.")
+            player.sendMessage("§c[SculWave] You are not in a Group.")
             return
         }
 
         val group = groups[groupId] ?: return
 
         if (group.owner != player.uniqueId) {
-            player.sendMessage("§c[Echowave] Only the group owner can kick players.")
+            player.sendMessage("§c[SculWave] Only the group owner can kick players.")
             return
         }
 
@@ -468,17 +466,17 @@ class EchoWave : JavaPlugin(), Listener {
             .find { it.name.equals(target, ignoreCase = true) }
 
         if (targetPlayer == null) {
-            player.sendMessage("§c[Echowave] $target is not online.")
+            player.sendMessage("§c[SculWave] $target is not online.")
             return
         }
 
         if (targetPlayer.uniqueId == player.uniqueId) {
-            player.sendMessage("§c[Echowave] Use /echo leave instead.")
+            player.sendMessage("§c[SculWave] Use /echo leave instead.")
             return
         }
 
         if (targetPlayer.uniqueId !in group.members) {
-            player.sendMessage("§c[Echowave] ${targetPlayer.name} is not in your group.")
+            player.sendMessage("§c[SculWave] ${targetPlayer.name} is not in your group.")
             return
         }
 
@@ -501,14 +499,14 @@ class EchoWave : JavaPlugin(), Listener {
         val settings = getPlayerSettings(player)
 
         val groupId = settings.groupId ?: run {
-            player.sendMessage("§c[Echowave] You are not in a group.")
+            player.sendMessage("§c[SculWave] You are not in a group.")
             return
         }
 
         val group = groups[groupId] ?: return
 
         if (group.owner != player.uniqueId) {
-            player.sendMessage("§c[Echowave] Only the group owner can transfer ownership.")
+            player.sendMessage("§c[SculWave] Only the group owner can transfer ownership.")
             return
         }
 
@@ -516,17 +514,17 @@ class EchoWave : JavaPlugin(), Listener {
             .find { it.name.equals(target, ignoreCase = true) }
 
         if (targetPlayer == null) {
-            player.sendMessage("§c[Echowave] $target is not online.")
+            player.sendMessage("§c[SculWave] $target is not online.")
             return
         }
 
         if (targetPlayer.uniqueId !in group.members) {
-            player.sendMessage("§c[Echowave] ${targetPlayer.name} is not in your group.")
+            player.sendMessage("§c[SculWave] ${targetPlayer.name} is not in your group.")
             return
         }
 
         if (targetPlayer.uniqueId == player.uniqueId) {
-            player.sendMessage("§c[Echowave] You are already the owner.")
+            player.sendMessage("§c[SculWave] You are already the owner.")
             return
         }
 
@@ -569,7 +567,7 @@ class EchoWave : JavaPlugin(), Listener {
             backendSocket.disconnect()
 
             backendSocket = BackendSocketClient(
-                plugin = this@EchoWave,
+                plugin = this@SculWave,
                 serverUrl = SERVER_URL,
                 backendId = backendId,
                 instanceId = instanceId
@@ -579,7 +577,7 @@ class EchoWave : JavaPlugin(), Listener {
 
         }
 
-        sender.sendMessage("§aEchoWave configuration reloaded.")
+        sender.sendMessage("§SculWave configuration reloaded.")
 
     }
 
@@ -671,7 +669,7 @@ class EchoWave : JavaPlugin(), Listener {
             instanceId = result.instanceId
             backendId = result.backendId
             logger.info("====================================")
-            logger.info("EchoWave activated successfully!")
+            logger.info("SculWave activated successfully!")
             logger.info("====================================")
 
         } catch (e: Exception) {

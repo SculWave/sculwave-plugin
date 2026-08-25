@@ -1,1 +1,1 @@
-rootProject.name = "Echowave"
+rootProject.name = "SculWave"
