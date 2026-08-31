@@ -1,99 +1,85 @@
 package org.nxblack.echoWave.voice
 
 import net.kyori.adventure.text.Component
-import org.bukkit.Color
-import org.bukkit.entity.Display
+import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
-import org.bukkit.entity.TextDisplay
-import org.bukkit.plugin.Plugin
-import org.bukkit.util.Transformation
-import org.joml.Vector3f
-import java.util.UUID
+import org.bukkit.scoreboard.Scoreboard
+import org.bukkit.scoreboard.Team
 
-class VoiceNameplateManager(
-    private val plugin: Plugin
-) {
-    private val displays = mutableMapOf<UUID, TextDisplay>()
-    private val scheduled = mutableSetOf<UUID>()
+class VoiceNameplateManager {
 
-    fun update(viewer: Player, target: Player, speaking: Boolean) {
-        if (viewer.uniqueId == target.uniqueId || !speaking) {
-            clear(target)
-            return
+    private val scoreboard: Scoreboard
+        get() = Bukkit.getScoreboardManager()!!.mainScoreboard
+
+    private val speakingTeam: Team
+        get() = getOrCreateTeam("echowave_speaking") {
+            prefix(Component.text("● ", NamedTextColor.GREEN))
         }
 
-        val uuid = target.uniqueId
-        val text = Component.text("🎤 ${target.name}")
-
-        val display = displays[uuid]
-
-        if (display == null || !display.isValid) {
-            create(target, text)
-        } else {
-            display.text(text)
+    private val enabledTeam: Team
+        get() = getOrCreateTeam("echowave_enabled") {
+            prefix(Component.text("● ", NamedTextColor.YELLOW))
         }
-    }
-    private fun create(player: Player, text: Component) {
-        val display = player.world.spawn(
-            player.location.clone().add(0.0, 2.7, 0.0),
-            TextDisplay::class.java
-        )
 
-        display.text(text)
-        display.billboard = Display.Billboard.CENTER
-        display.isSeeThrough = true
-        display.isShadowed = false
-        display.backgroundColor = Color.fromARGB(0, 0, 0, 0)
-        display.setGravity(false)
-        display.transformation = Transformation(
-            Vector3f(0f, 0f, 0f),
-            display.transformation.leftRotation,
-            Vector3f(0.65f, 0.65f, 0.65f),
-            display.transformation.rightRotation
-        )
+    private val mutedTeam: Team
+        get() = getOrCreateTeam("echowave_muted") {
+            prefix(Component.empty())
+        }
 
-        displays[player.uniqueId] = display
-        schedule(player)
+    private fun getOrCreateTeam(
+        name: String,
+        setup: Team.() -> Unit
+    ): Team {
+        return scoreboard.getTeam(name)
+            ?: scoreboard.registerNewTeam(name).apply(setup)
     }
 
-    private fun schedule(player: Player) {
-        val uuid = player.uniqueId
+    fun update(
+        player: Player,
+        speaking: Boolean,
+        muted: Boolean
+    ) {
+        removeFromAllTeams(player)
 
-        if (!scheduled.add(uuid)) {
-            return
+        when {
+            muted -> mutedTeam.addEntry(player.name)
+
+            speaking -> speakingTeam.addEntry(player.name)
+
+            else -> enabledTeam.addEntry(player.name)
         }
+    }
 
-        player.scheduler.runAtFixedRate(
-            plugin,
-            { _ ->
-                val display = displays[uuid]
+    fun updateSpeaking(
+        player: Player,
+        speaking: Boolean,
+        muted: Boolean
+    ) {
+        update(player, speaking, muted)
+    }
 
-                if (!player.isOnline || display == null || !display.isValid) {
-                    display?.remove()
-                    displays.remove(uuid)
-                    scheduled.remove(uuid)
-                    return@runAtFixedRate
-                }
+    fun updateMuted(
+        player: Player,
+        muted: Boolean,
+        speaking: Boolean = false
+    ) {
+        update(player, speaking, muted)
+    }
 
-                display.teleport(
-                    player.location.clone().add(0.0, 2.7, 0.0)
-                )
-            },
-            null,
-            1L,
-            1L
-        )
+    private fun removeFromAllTeams(player: Player) {
+        speakingTeam.removeEntry(player.name)
+        enabledTeam.removeEntry(player.name)
+        mutedTeam.removeEntry(player.name)
     }
 
     fun clear(player: Player) {
-        val uuid = player.uniqueId
-        displays.remove(uuid)?.remove()
-        scheduled.remove(uuid)
+        removeFromAllTeams(player)
     }
 
     fun clearAll() {
-        displays.values.forEach { it.remove() }
-        displays.clear()
-        scheduled.clear()
+        speakingTeam.entries.toList().forEach(speakingTeam::removeEntry)
+        enabledTeam.entries.toList().forEach(enabledTeam::removeEntry)
+        mutedTeam.entries.toList().forEach(mutedTeam::removeEntry)
     }
 }

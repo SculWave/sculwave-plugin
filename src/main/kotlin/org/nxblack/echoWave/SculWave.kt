@@ -33,7 +33,7 @@ import java.util.logging.Level
 class SculWave : JavaPlugin(), Listener {
     companion object {
         const val SERVER_URL = "https://sculwave.com"
-        const val GROUP_CHARS ="ABCDEFGHJKLMNPQRSTUVWXYZ34578"
+        const val GROUP_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ34578"
     }
 
 
@@ -43,16 +43,15 @@ class SculWave : JavaPlugin(), Listener {
     val pendingInvites = ConcurrentHashMap<UUID, MutableList<GroupInvite>>()
     private val voiceBannedPlayers = ConcurrentHashMap.newKeySet<UUID>()
     val voiceStateManager = VoiceStateManager()
-    val voiceIndicatorManager = VoiceIndicatorManager(this)
     private lateinit var backendSocket: BackendSocketClient
-    val voiceNameplateManager = VoiceNameplateManager(this)
+    val voiceNameplateManager = VoiceNameplateManager()
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
         pendingInvites.remove(event.player.uniqueId)
         playerSettings.remove(event.player.uniqueId)
 
-        voiceIndicatorManager.clear(event.player)
+
         voiceNameplateManager.clear(event.player)
     }
 
@@ -67,7 +66,6 @@ class SculWave : JavaPlugin(), Listener {
         player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
         player.sendMessage("§7Use this code in the SculWave app.")
 
-        voiceIndicatorManager.update(player)
     }
 
     override fun onEnable() {
@@ -109,31 +107,32 @@ class SculWave : JavaPlugin(), Listener {
             backendSocket.connect()
 
 
-
         }
 
-        getCommand("echo")!!.apply {
+        getCommand("voice")!!.apply {
             setExecutor(Command(this@SculWave))
             tabCompleter = TabCompleter(this@SculWave)
         }
 
 
-        server.pluginManager.registerEvents(this,this)
+        server.pluginManager.registerEvents(this, this)
+
+
 
         voiceStateManager.subscribe { state ->
             server.getPlayerExact(state.gamertag)?.let { target ->
 
-                Bukkit.getOnlinePlayers()
-                    .filter { it.uniqueId != target.uniqueId }
-                    .forEach { viewer ->
-                        voiceNameplateManager.update(
-                            viewer = viewer,
-                            target = target,
-                            speaking = state.speaking
-                        )
-                    }
+                val muted = getPlayerSettings(target).muted
+
+                voiceNameplateManager.update(
+                    player = target,
+                    speaking = state.speaking,
+                    muted = muted
+                )
             }
         }
+
+
         if (Platform.isFolia) {
             startFoliaScheduler()
         } else {
@@ -145,8 +144,11 @@ class SculWave : JavaPlugin(), Listener {
 
     override fun onDisable() {
         voiceNameplateManager.clearAll()
-        voiceIndicatorManager.clearAll()
-        backendSocket.disconnect()
+
+        if (::backendSocket.isInitialized) {
+            backendSocket.disconnect()
+        }
+
         scope.cancel()
     }
 
@@ -162,7 +164,8 @@ class SculWave : JavaPlugin(), Listener {
     private fun updatePositions() {
 
         if (BackendState.roomCode.isBlank() ||
-            BackendState.authToken.isBlank())
+            BackendState.authToken.isBlank()
+        )
             return
 
         val payload = Bukkit.getOnlinePlayers().map {
@@ -201,6 +204,7 @@ class SculWave : JavaPlugin(), Listener {
             20L
         )
     }
+
     private fun startBukkitScheduler() {
         server.scheduler.runTaskTimer(
             this,
@@ -235,7 +239,7 @@ class SculWave : JavaPlugin(), Listener {
 
         while (true) {
             val code = buildString {
-                repeat(4) {append( GROUP_CHARS.random())}
+                repeat(4) { append(GROUP_CHARS.random()) }
             }
             if (!groups.containsKey(code))
                 return code
@@ -248,24 +252,24 @@ class SculWave : JavaPlugin(), Listener {
         }
     }
 
-    fun joinGroup(player: Player,code: String){
+    fun joinGroup(player: Player, code: String) {
         val invites = pendingInvites[player.uniqueId]
 
-        if(invites == null){
+        if (invites == null) {
             player.sendMessage("§cYou don't have a pending invite.")
             return
         }
 
         val invite = invites.firstOrNull { it.code == code }
 
-        if(invite == null){
+        if (invite == null) {
             player.sendMessage("§cInvalid join code.")
             return
         }
 
         val group = groups[invite.partyId]
 
-        if(group == null){
+        if (group == null) {
             player.sendMessage("§cParty no longer exists.")
             pendingInvites.remove(player.uniqueId)
             return
@@ -376,7 +380,7 @@ class SculWave : JavaPlugin(), Listener {
         player.sendMessage("§7Code: §f${group.joinCode}")
     }
 
-    fun createGroup(player: Player){
+    fun createGroup(player: Player) {
         val settings = getPlayerSettings(player)
 
         if (!settings.groupId.isNullOrBlank()) {
@@ -396,16 +400,16 @@ class SculWave : JavaPlugin(), Listener {
 
     }
 
-    fun invitePlayer(player: Player,target: String){
+    fun invitePlayer(player: Player, target: String) {
         val settings = getPlayerSettings(player)
         if (settings.groupId.isNullOrBlank()) {
             createGroup(player)
         }
-        if(settings.groupId == null) return
+        if (settings.groupId == null) return
 
         val group = groups[settings.groupId] ?: return
 
-        if(group.owner != player.uniqueId){
+        if (group.owner != player.uniqueId) {
             player.sendMessage("§c[SculWave] Only the group owner can invite players.")
             return
         }
@@ -413,17 +417,17 @@ class SculWave : JavaPlugin(), Listener {
         val inPlayer = Bukkit.getOnlinePlayers()
             .find { it.name.equals(target, ignoreCase = true) }
 
-        if(inPlayer == null){
+        if (inPlayer == null) {
             player.sendMessage("§c[SculWave] $target is not online.")
             return
         }
 
-        if(inPlayer.name == player.name){
+        if (inPlayer.name == player.name) {
             player.sendMessage("§c[SculWave] You cannot invite yourself.")
             return
         }
 
-        if(inPlayer.uniqueId in group.members){
+        if (inPlayer.uniqueId in group.members) {
             player.sendMessage("§e[SculWave] ${inPlayer.name} is already in your Group.")
             return
         }
@@ -441,8 +445,8 @@ class SculWave : JavaPlugin(), Listener {
 
         inPlayer.sendMessage("§a[SculWave] ${player.name} invited you to a Group. §b${group.joinCode}")
         player.sendMessage("§a[SculWave] Invite sent to ${inPlayer.name}.")
-        playConfiguredSound(inPlayer,"sounds.invite")
-        playConfiguredSound(player,"sounds.invite-sent")
+        playConfiguredSound(inPlayer, "sounds.invite")
+        playConfiguredSound(player, "sounds.invite-sent")
 
 
     }
@@ -471,7 +475,7 @@ class SculWave : JavaPlugin(), Listener {
         }
 
         if (targetPlayer.uniqueId == player.uniqueId) {
-            player.sendMessage("§c[SculWave] Use /echo leave instead.")
+            player.sendMessage("§c[SculWave] Use /voice leave instead.")
             return
         }
 
@@ -484,7 +488,7 @@ class SculWave : JavaPlugin(), Listener {
         getPlayerSettings(targetPlayer).groupId = null
 
         targetPlayer.sendMessage("§cYou were kicked from the group.")
-        playConfiguredSound(targetPlayer,"sounds.kick")
+        playConfiguredSound(targetPlayer, "sounds.kick")
 
         group.members.forEach {
             Bukkit.getPlayer(it)?.sendMessage(
@@ -613,7 +617,7 @@ class SculWave : JavaPlugin(), Listener {
         }
     }
 
-    private suspend fun activatePlugin() : Boolean {
+    private suspend fun activatePlugin(): Boolean {
 
         try {
             val activationKey =
