@@ -46,7 +46,7 @@ class SculWave : JavaPlugin(), Listener {
     private val voiceBannedPlayers = ConcurrentHashMap.newKeySet<UUID>()
     val voiceStateManager = VoiceStateManager()
     private lateinit var backendSocket: BackendSocketClient
-    val voiceNameplateManager = VoiceNameplateManager()
+    lateinit var voiceNameplateManager: VoiceNameplateManager
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
@@ -81,11 +81,16 @@ class SculWave : JavaPlugin(), Listener {
 
 
     override fun onEnable() {
-
-        PacketEvents.getAPI().init()
         logger.info("====================================")
         logger.info("SculWave initialized successfully!")
         logger.info("====================================")
+
+
+
+    PacketEvents.getAPI().init()
+
+    voiceNameplateManager = VoiceNameplateManager()
+
         saveDefaultConfig()
 
         loadBackendConfig()
