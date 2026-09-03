@@ -6,11 +6,18 @@ plugins {
 
 repositories {
     mavenCentral()
+
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.codemc.io/repository/maven-releases/")
+    maven("https://repo.codemc.io/repository/maven-snapshots/")
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+
+    // PacketEvents - supports 26.2 / Paper / Spigot / Folia
+    implementation("com.github.retrooper:packetevents-spigot:2.13.0")
+
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.socket:socket.io-client:2.1.2")
     implementation("org.json:json:20250517")
@@ -19,7 +26,7 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 tasks {
@@ -27,8 +34,21 @@ tasks {
         dependsOn(shadowJar)
     }
 
+    shadowJar {
+        relocate(
+            "com.github.retrooper",
+            "org.nxblack.echoWave.libs.packetevents"
+        )
+
+        relocate(
+            "io.github.retrooper",
+            "org.nxblack.echoWave.libs.packetevents"
+        )
+    }
+
     processResources {
         val props = mapOf("version" to version)
+
         filesMatching("plugin.yml") {
             expand(props)
         }

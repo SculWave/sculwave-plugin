@@ -141,9 +141,9 @@ class BackendSocketClient(
             )
             plugin.voiceStateManager.update(state)
 
-            plugin.logger.info(
-                "[VoiceState] ${state.gamertag} connected=${state.connected} muted=${state.muted} speaking=${state.speaking}"
-            )
+//            plugin.logger.info(
+//                "[VoiceState] ${state.gamertag} connected=${state.connected} muted=${state.muted} speaking=${state.speaking}"
+//          )
         }
 
 

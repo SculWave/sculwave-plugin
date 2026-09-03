@@ -24,6 +24,8 @@ import org.nxblack.echoWave.voice.VoiceNameplateManager
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import com.github.retrooper.packetevents.PacketEvents
+import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.*
@@ -68,7 +70,19 @@ class SculWave : JavaPlugin(), Listener {
 
     }
 
+
+    override fun onLoad() {
+        PacketEvents.setAPI(
+            SpigotPacketEventsBuilder.build(this)
+        )
+
+        PacketEvents.getAPI().load()
+    }
+
+
     override fun onEnable() {
+
+        PacketEvents.getAPI().init()
         logger.info("====================================")
         logger.info("SculWave initialized successfully!")
         logger.info("====================================")
@@ -121,13 +135,10 @@ class SculWave : JavaPlugin(), Listener {
 
         voiceStateManager.subscribe { state ->
             server.getPlayerExact(state.gamertag)?.let { target ->
-
-                val muted = getPlayerSettings(target).muted
-
                 voiceNameplateManager.update(
                     player = target,
                     speaking = state.speaking,
-                    muted = muted
+                    muted = getPlayerSettings(target).muted
                 )
             }
         }
@@ -150,6 +161,7 @@ class SculWave : JavaPlugin(), Listener {
         }
 
         scope.cancel()
+        PacketEvents.getAPI().terminate()
     }
 
 
