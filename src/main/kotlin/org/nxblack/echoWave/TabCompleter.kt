@@ -26,7 +26,7 @@ class TabCompleter(private val plugin: SculWave) : TabCompleter {
 
             if (args.size == 1) {
                 val commands = mutableListOf(
-                    "mute",
+                    "m",
                     "invite",
                     "join",
                     "leave",
