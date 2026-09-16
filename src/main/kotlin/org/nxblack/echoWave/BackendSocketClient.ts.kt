@@ -69,7 +69,7 @@ class BackendSocketClient(
 
             authToken = token
 
-            BackendState.roomCode = roomCode
+            BackendState.setRoomCode(plugin, roomCode)
             BackendState.authToken = token
 
             plugin.logger.info("====================================")

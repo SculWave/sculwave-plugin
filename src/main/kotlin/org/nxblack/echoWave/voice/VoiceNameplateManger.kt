@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package org.nxblack.echoWave.voice
 
 import com.github.retrooper.packetevents.PacketEvents
@@ -6,1138 +8,994 @@ import com.github.retrooper.packetevents.event.PacketListenerPriority
 import com.github.retrooper.packetevents.event.PacketSendEvent
 import com.github.retrooper.packetevents.protocol.packettype.PacketType
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.CollisionRule
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.NameTagVisibility
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.OptionData
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.ScoreBoardTeamInfo
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.TeamMode
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import org.bukkit.plugin.java.JavaPlugin
+import org.nxblack.echoWave.data.Platform
+import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
-/**
- * EchoWave voice indicator for Minecraft player nameplates.
- *
- * Does NOT use Bukkit Scoreboard/Team API.
- *
- * Voice states:
- *
- *   speaking       -> green ●
- *   enabled/silent -> yellow ●
- *   muted          -> no indicator
- *
- * Existing rank/team prefix, suffix, color, visibility,
- * collision and options are preserved.
- */
-class VoiceNameplateManager {
-
+class VoiceNameplateManager(private val plugin: JavaPlugin) {
     companion object {
-        private const val ECHO_TEAM_PREFIX = "ew_voice_"
-
-        private val GREEN_DOT =
-            Component.text(
-                "● ",
-                NamedTextColor.GREEN
-            )
-
-        private val YELLOW_DOT =
-            Component.text(
-                "● ",
-                NamedTextColor.YELLOW
-            )
+        private const val TEAM_PREFIX = "ewv"
+        private const val LOG_PREFIX = "[VoiceNameplate]"
+        private val GREEN_DOT = Component.text(" ●", NamedTextColor.GREEN)
+        private val YELLOW_DOT = Component.text(" ●", NamedTextColor.YELLOW)
     }
 
-    /**
-     * Current voice state of every known player.
-     */
-    private val voiceStates =
-        ConcurrentHashMap<UUID, VoiceState>()
+    private val voiceStates = ConcurrentHashMap<UUID, VoiceState>()
+    private val viewerStates = ConcurrentHashMap<UUID, ViewerState>()
+    private val nameToUuid = ConcurrentHashMap<String, UUID>()
+    private val uuidToName = ConcurrentHashMap<UUID, String>()
+    private val updateExecutor = Executors.newSingleThreadScheduledExecutor()
+    private val pendingUpdates = ConcurrentHashMap<UUID, ScheduledFuture<*>>()
 
-    /**
-     * Original scoreboard teams observed for each viewer.
-     *
-     * viewer UUID -> team name -> team state
-     */
-    private val teams =
-        ConcurrentHashMap<UUID, MutableMap<String, TeamState>>()
+    private fun log(message: String) {
+//        plugin.logger.info("$LOG_PREFIX $message")
+    }
 
-    /**
-     * Player -> original team mapping for every viewer.
-     *
-     * viewer UUID -> player name -> team name
-     */
-    private val playerTeams =
-        ConcurrentHashMap<UUID, MutableMap<String, String>>()
+    private fun debug(message: String) {
+//        plugin.logger.info("$LOG_PREFIX DEBUG: $message")
+    }
 
-    /**
-     * Players currently represented by an EchoWave
-     * client-side team.
-     */
-    private val decorated =
-        ConcurrentHashMap.newKeySet<ViewerTarget>()
+    private val listener = object : PacketListenerAbstract(PacketListenerPriority.HIGH) {
+        override fun onPacketSend(event: PacketSendEvent) {
+            if (event.packetType != PacketType.Play.Server.TEAMS) return
 
-    private val listener =
-        object : PacketListenerAbstract(
-            PacketListenerPriority.HIGH
-        ) {
+            val viewer = event.getPlayer<Player>() ?: return
+            val packet = WrapperPlayServerTeams(event)
 
-            override fun onPacketSend(
-                event: PacketSendEvent
-            ) {
-                if (
-                    event.packetType !=
-                    PacketType.Play.Server.TEAMS
-                ) {
-                    return
-                }
+            if (packet.teamName.startsWith(TEAM_PREFIX)) return
 
-                /*
-                 * PacketEvents getPlayer() is generic.
-                 * Explicitly request a Bukkit Player.
-                 */
-                val viewer =
-                    event.getPlayer<Player>()
-                        ?: return
+            debug(
+                "TEAMS packet -> viewer=${viewer.name}, " +
+                        "team=${packet.teamName}, " +
+                        "mode=${packet.teamMode}, " +
+                        "players=${packet.players}"
+            )
 
-                val packet =
-                    WrapperPlayServerTeams(event)
-
-                handleTeamPacket(
-                    viewer = viewer,
-                    packet = packet,
-                    event = event
-                )
-            }
+            handleTeamPacket(viewer, packet, event)
         }
+    }
 
     init {
-        PacketEvents.getAPI()
-            .eventManager
-            .registerListener(listener)
+        log("Initializing VoiceNameplateManager")
+        PacketEvents.getAPI().eventManager.registerListener(listener)
+        log("PacketEvents TEAMS listener registered")
     }
 
-    /**
-     * Update voice state.
-     */
-    fun update(
-        player: Player,
-        speaking: Boolean,
-        muted: Boolean
-    ) {
-        voiceStates[player.uniqueId] =
-            VoiceState(
-                speaking = speaking,
-                muted = muted
-            )
+    fun update(player: Player, speaking: Boolean, muted: Boolean) {
+        val uuid = player.uniqueId
+        val name = player.name
+        val newState = VoiceState(speaking, muted)
+        val oldState = voiceStates.put(uuid, newState)
 
-        /*
-         * Rebuild the player's visible nameplate
-         * for every other player.
-         */
-        Bukkit.getOnlinePlayers().forEach { viewer ->
+        nameToUuid[name.lowercase()] = uuid
+        uuidToName[uuid] = name
 
-            if (
-                viewer.uniqueId ==
-                player.uniqueId
-            ) {
-                return@forEach
+        log(
+            "VOICE UPDATE player=$name uuid=$uuid " +
+                    "speaking=$speaking muted=$muted old=$oldState"
+        )
+
+        if (oldState == newState) {
+            debug("No voice-state change for $name")
+            return
+        }
+
+        pendingUpdates.remove(uuid)?.cancel(false)
+
+        pendingUpdates[uuid] = updateExecutor.schedule({
+            debug("Applying voice update to viewers for target=$name")
+
+            runGlobal {
+                Bukkit.getOnlinePlayers().toList().forEach { viewer ->
+                    if (viewer.uniqueId == uuid) return@forEach
+
+                    runForViewer(viewer) {
+                        refresh(viewer, uuid)
+                    }
+                }
             }
 
-            refresh(
-                viewer = viewer,
-                target = player
-            )
-        }
+            pendingUpdates.remove(uuid)
+        }, 50L, TimeUnit.MILLISECONDS)
     }
 
-    fun updateSpeaking(
-        player: Player,
-        speaking: Boolean,
-        muted: Boolean
-    ) {
+    fun updateSpeaking(player: Player, speaking: Boolean) {
+        val current = voiceStates[player.uniqueId]
+
+        debug(
+            "updateSpeaking player=${player.name} " +
+                    "speaking=$speaking current=$current"
+        )
+
         update(
-            player = player,
-            speaking = speaking,
-            muted = muted
+            player,
+            speaking,
+            current?.muted ?: false
         )
     }
 
-    fun updateMuted(
-        player: Player,
-        muted: Boolean,
-        speaking: Boolean = false
-    ) {
+    fun updateMuted(player: Player, muted: Boolean) {
+        val current = voiceStates[player.uniqueId]
+
+        debug(
+            "updateMuted player=${player.name} " +
+                    "muted=$muted current=$current"
+        )
+
         update(
-            player = player,
-            speaking = speaking,
-            muted = muted
+            player,
+            current?.speaking ?: false,
+            muted
         )
     }
 
-    /**
-     * Remove player state.
-     */
-    fun clear(
-        player: Player
-    ) {
-        val targetId =
-            player.uniqueId
+    fun clear(player: Player) {
+        val targetId = player.uniqueId
+        val targetName = player.name
 
+        log("CLEAR target=$targetName uuid=$targetId")
+
+        pendingUpdates.remove(targetId)?.cancel(false)
         voiceStates.remove(targetId)
+        nameToUuid.remove(targetName.lowercase())
+        uuidToName.remove(targetId)
 
-        decorated.removeIf {
-            it.target == targetId
-        }
+        runGlobal {
+            Bukkit.getOnlinePlayers().toList().forEach { viewer ->
+                if (viewer.uniqueId == targetId) return@forEach
 
-        playerTeams.values.forEach {
-            it.remove(player.name)
-        }
+                runForViewer(viewer) {
+                    debug(
+                        "Removing decoration for disconnected target=" +
+                                "$targetName from viewer=${viewer.name}"
+                    )
 
-        teams.values.forEach { viewerTeams ->
-            viewerTeams.values.forEach { team ->
-                team.players.remove(player.name)
+                    removeDecoration(viewer, targetId)
+                }
             }
         }
     }
 
-    /**
-     * Shutdown.
-     */
-    fun clearAll() {
-        voiceStates.clear()
-        teams.clear()
-        playerTeams.clear()
-        decorated.clear()
+    fun refresh(player: Player) {
+        val viewerId = player.uniqueId
 
-        PacketEvents.getAPI()
-            .eventManager
-            .unregisterListener(listener)
+        log("REFRESH viewer=${player.name}")
+
+        runForViewer(player) {
+            voiceStates.keys
+                .filter { it != viewerId }
+                .forEach { targetId ->
+                    refresh(player, targetId)
+                }
+        }
     }
 
-    /**
-     * Process an outgoing vanilla scoreboard-team packet.
-     */
+    fun clearAll() {
+        log("CLEAR ALL")
+
+        pendingUpdates.values.forEach { it.cancel(false) }
+        pendingUpdates.clear()
+        updateExecutor.shutdownNow()
+
+        runGlobal {
+            Bukkit.getOnlinePlayers().toList().forEach { viewer ->
+                runForViewer(viewer) {
+                    viewerStates[viewer.uniqueId]
+                        ?.decoratedTargets
+                        ?.toList()
+                        ?.forEach { targetId ->
+                            removeFakeTeamOnly(viewer, targetId)
+                        }
+                }
+            }
+
+            voiceStates.clear()
+            viewerStates.clear()
+            nameToUuid.clear()
+            uuidToName.clear()
+        }
+
+        PacketEvents.getAPI().eventManager.unregisterListener(listener)
+
+        log("VoiceNameplateManager disabled")
+    }
+
     private fun handleTeamPacket(
         viewer: Player,
         packet: WrapperPlayServerTeams,
         event: PacketSendEvent
     ) {
-        val teamName =
-            packet.teamName
-
-        /*
-         * Ignore our own client-side teams.
-         */
-        if (
-            teamName.startsWith(
-                ECHO_TEAM_PREFIX
-            )
-        ) {
-            return
+        val state = viewerStates.computeIfAbsent(viewer.uniqueId) {
+            ViewerState()
         }
 
-        val mode =
-            packet.teamMode
+        debug(
+            "HANDLE TEAM viewer=${viewer.name} " +
+                    "team=${packet.teamName} mode=${packet.teamMode}"
+        )
 
-        val viewerTeams =
-            teams.computeIfAbsent(
-                viewer.uniqueId
-            ) {
-                ConcurrentHashMap()
-            }
-
-        val viewerPlayerTeams =
-            playerTeams.computeIfAbsent(
-                viewer.uniqueId
-            ) {
-                ConcurrentHashMap()
-            }
-
-        when (mode) {
-
-            TeamMode.CREATE -> {
-                handleCreate(
-                    viewer = viewer,
-                    packet = packet,
-                    event = event,
-                    viewerTeams = viewerTeams,
-                    viewerPlayerTeams = viewerPlayerTeams
-                )
-            }
-
-            TeamMode.UPDATE -> {
-                handleUpdate(
-                    viewer = viewer,
-                    packet = packet,
-                    event = event,
-                    viewerTeams = viewerTeams
-                )
-            }
-
-            TeamMode.ADD_ENTITIES -> {
-                handleAddEntities(
-                    viewer = viewer,
-                    packet = packet,
-                    event = event,
-                    viewerTeams = viewerTeams,
-                    viewerPlayerTeams = viewerPlayerTeams
-                )
-            }
-
-            TeamMode.REMOVE_ENTITIES -> {
-                handleRemoveEntities(
-                    viewer = viewer,
-                    packet = packet,
-                    event = event,
-                    viewerTeams = viewerTeams,
-                    viewerPlayerTeams = viewerPlayerTeams
-                )
-            }
-
-            TeamMode.REMOVE -> {
-                handleRemoveTeam(
-                    viewer = viewer,
-                    packet = packet,
-                    event = event,
-                    viewerTeams = viewerTeams,
-                    viewerPlayerTeams = viewerPlayerTeams
-                )
-            }
+        when (packet.teamMode) {
+            TeamMode.CREATE -> handleCreate(viewer, state, packet, event)
+            TeamMode.UPDATE -> handleUpdate(viewer, state, packet, event)
+            TeamMode.ADD_ENTITIES -> handleAddEntities(viewer, state, packet, event)
+            TeamMode.REMOVE_ENTITIES -> handleRemoveEntities(viewer, state, packet, event)
+            TeamMode.REMOVE -> handleRemoveTeam(viewer, state, packet, event)
         }
     }
 
     private fun handleCreate(
         viewer: Player,
+        state: ViewerState,
         packet: WrapperPlayServerTeams,
-        event: PacketSendEvent,
-        viewerTeams: MutableMap<String, TeamState>,
-        viewerPlayerTeams: MutableMap<String, String>
+        event: PacketSendEvent
     ) {
-        val info =
-            packet.teamInfo.orElse(null)
-                ?: return
+        val info = packet.teamInfo.orElse(null) ?: return
+        val players = packet.players.toList()
 
-        val players =
-            packet.players.toList()
+        log(
+            "TEAM CREATE viewer=${viewer.name} " +
+                    "team=${packet.teamName} players=$players"
+        )
 
-        val state =
-            TeamState(
-                teamName = packet.teamName,
-                info = info,
-                players =
-                    ConcurrentHashMap.newKeySet<String>()
-            )
-
-        state.players.addAll(players)
-
-        viewerTeams[packet.teamName] =
-            state
-
-        players.forEach { name ->
-            viewerPlayerTeams[name] =
-                packet.teamName
+        state.teams[packet.teamName]?.let { oldTeam ->
+            oldTeam.players.forEach { name ->
+                if (state.playerTeams[name] == packet.teamName) {
+                    state.playerTeams.remove(name)
+                }
+            }
         }
 
-        val decoratedPlayers =
-            players.filter {
-                shouldDecorate(
-                    viewer,
-                    it
-                )
-            }
+        val team = TeamState(packet.teamName, info)
+        team.players.addAll(players)
 
-        if (
-            decoratedPlayers.isEmpty()
-        ) {
+        state.teams[packet.teamName] = team
+        state.clientTeams.add(packet.teamName)
+
+        players.forEach { name ->
+            state.playerTeams[name] = packet.teamName
+        }
+
+        val decorated = players.filter {
+            shouldDecorate(it, viewer)
+        }
+
+        debug(
+            "TEAM CREATE analysis viewer=${viewer.name} " +
+                    "team=${packet.teamName} decorated=$decorated"
+        )
+
+        if (decorated.isEmpty()) {
+            debug("TEAM CREATE untouched: no decorated players")
             return
         }
 
-        event.setCancelled(true)
+        event.isCancelled = true
 
-        /*
-         * Send the original team for everyone who isn't
-         * being decorated.
-         */
-        val normalPlayers =
-            players.filterNot {
-                it in decoratedPlayers
+        val normal = players.filterNot { it in decorated }
+
+        debug(
+            "TEAM CREATE rewriting viewer=${viewer.name} " +
+                    "team=${packet.teamName} normal=$normal decorated=$decorated"
+        )
+
+        send(
+            viewer,
+            WrapperPlayServerTeams(
+                packet.teamName,
+                TeamMode.CREATE,
+                info,
+                normal
+            )
+        )
+
+        decorated.forEach { name ->
+            val targetId = nameToUuid[name.lowercase()] ?: run {
+                debug(
+                    "Cannot decorate $name: UUID not known yet"
+                )
+                return@forEach
             }
 
-        if (
-            normalPlayers.isNotEmpty()
-        ) {
-            send(
-                viewer,
-                WrapperPlayServerTeams(
-                    packet.teamName,
-                    TeamMode.CREATE,
-                    info,
-                    normalPlayers
-                )
+            state.decorations[targetId] = DecorationState(
+                originalTeamName = packet.teamName
             )
-        }
 
-        /*
-         * Give each voice player their own client-side team.
-         */
-        decoratedPlayers.forEach { name ->
-
-            val target =
-                Bukkit.getPlayerExact(name)
-                    ?: return@forEach
-
-            decorate(
-                viewer = viewer,
-                target = target,
-                original = state
+            debug(
+                "Creating decoration state " +
+                        "viewer=${viewer.name} target=$name " +
+                        "originalTeam=${packet.teamName}"
             )
+
+            ensureDecoration(viewer, targetId)
         }
     }
 
     private fun handleUpdate(
         viewer: Player,
+        state: ViewerState,
         packet: WrapperPlayServerTeams,
-        event: PacketSendEvent,
-        viewerTeams: MutableMap<String, TeamState>
+        event: PacketSendEvent
     ) {
-        val info =
-            packet.teamInfo.orElse(null)
-                ?: return
-
-        val state =
-            viewerTeams[packet.teamName]
-                ?: return
-
-        state.info = info
-
-        val decoratedPlayers =
-            state.players.filter {
-                shouldDecorate(
-                    viewer,
-                    it
-                )
-            }
-
-        if (
-            decoratedPlayers.isEmpty()
-        ) {
+        val info = packet.teamInfo.orElse(null) ?: return
+        val team = state.teams[packet.teamName] ?: run {
+            debug(
+                "TEAM UPDATE ignored: unknown team=" +
+                        "${packet.teamName} viewer=${viewer.name}"
+            )
             return
         }
 
-        event.setCancelled(true)
+        log(
+            "TEAM UPDATE viewer=${viewer.name} " +
+                    "team=${packet.teamName} players=${team.players}"
+        )
 
-        /*
-         * Send updated original team state.
-         */
-        val normalPlayers =
-            state.players.filterNot {
-                it in decoratedPlayers
-            }
+        team.info = info
 
-        /*
-         * UPDATE does not contain entity names.
-         * It changes the team itself.
-         *
-         * Send the normal team update first.
-         */
+        val decorated = team.players.filter {
+            val targetId = nameToUuid[it.lowercase()]
+            isDecorated(viewer, targetId)
+        }
+
+        if (decorated.isEmpty()) {
+            debug("TEAM UPDATE untouched: no decorated players")
+            return
+        }
+
+        event.isCancelled = true
+
         send(
             viewer,
             WrapperPlayServerTeams(
                 packet.teamName,
                 TeamMode.UPDATE,
                 info,
-                emptyList<String>()
+                emptyList()
             )
         )
 
-        /*
-         * Then update every EchoWave copy.
-         */
-        decoratedPlayers.forEach { name ->
+        decorated.forEach { name ->
+            val targetId = nameToUuid[name.lowercase()] ?: return@forEach
 
-            val target =
-                Bukkit.getPlayerExact(name)
-                    ?: return@forEach
+            state.decorations[targetId]?.originalTeamName = packet.teamName
 
-            updateDecorated(
-                viewer = viewer,
-                target = target,
-                original = state
+            debug(
+                "Updating fake team because original team changed: " +
+                        "viewer=${viewer.name} target=$name"
             )
+
+            updateDecoration(viewer, targetId)
         }
     }
 
     private fun handleAddEntities(
         viewer: Player,
+        state: ViewerState,
         packet: WrapperPlayServerTeams,
-        event: PacketSendEvent,
-        viewerTeams: MutableMap<String, TeamState>,
-        viewerPlayerTeams: MutableMap<String, String>
+        event: PacketSendEvent
     ) {
-        val state =
-            viewerTeams[packet.teamName]
-                ?: return
-
-        val incoming =
-            packet.players.toList()
-
-        state.players.addAll(
-            incoming
-        )
-
-        incoming.forEach { name ->
-            viewerPlayerTeams[name] =
-                packet.teamName
-        }
-
-        val decoratedPlayers =
-            incoming.filter {
-                shouldDecorate(
-                    viewer,
-                    it
-                )
-            }
-
-        if (
-            decoratedPlayers.isEmpty()
-        ) {
+        val team = state.teams[packet.teamName] ?: run {
+            debug(
+                "TEAM ADD ignored: unknown team=" +
+                        "${packet.teamName} viewer=${viewer.name}"
+            )
             return
         }
 
-        event.setCancelled(true)
+        val incoming = packet.players.toList()
 
-        val normalPlayers =
-            incoming.filterNot {
-                it in decoratedPlayers
+        log(
+            "TEAM ADD viewer=${viewer.name} " +
+                    "team=${packet.teamName} players=$incoming"
+        )
+
+        incoming.forEach { name ->
+            val previousTeamName = state.playerTeams[name]
+
+            if (previousTeamName != null && previousTeamName != packet.teamName) {
+                debug(
+                    "Player $name moved from team=$previousTeamName " +
+                            "to team=${packet.teamName}"
+                )
+
+                state.teams[previousTeamName]?.players?.remove(name)
             }
 
-        if (
-            normalPlayers.isNotEmpty()
-        ) {
+            team.players.add(name)
+            state.playerTeams[name] = packet.teamName
+        }
+
+        val decorated = incoming.filter {
+            shouldDecorate(it, viewer)
+        }
+
+        if (decorated.isEmpty()) return
+
+        event.isCancelled = true
+
+        val normal = incoming.filterNot { it in decorated }
+
+        debug(
+            "TEAM ADD rewriting viewer=${viewer.name} " +
+                    "normal=$normal decorated=$decorated"
+        )
+
+        if (normal.isNotEmpty()) {
             send(
                 viewer,
                 WrapperPlayServerTeams(
                     packet.teamName,
                     TeamMode.ADD_ENTITIES,
-                    null as ScoreBoardTeamInfo?,
-                    normalPlayers
+                    Optional.empty<ScoreBoardTeamInfo>(),
+                    normal
                 )
             )
         }
 
-        decoratedPlayers.forEach { name ->
+        decorated.forEach { name ->
+            val targetId = nameToUuid[name.lowercase()] ?: return@forEach
 
-            val target =
-                Bukkit.getPlayerExact(name)
-                    ?: return@forEach
+            state.decorations[targetId]?.originalTeamName = packet.teamName
 
-            decorate(
-                viewer = viewer,
-                target = target,
-                original = state
+            debug(
+                "Target $name is decorated; keeping it in fake team " +
+                        "for viewer=${viewer.name}, newOriginal=${packet.teamName}"
             )
+
+            if (isDecorated(viewer, targetId)) {
+                updateDecoration(viewer, targetId)
+            } else {
+                state.decorations[targetId] = DecorationState(
+                    originalTeamName = packet.teamName
+                )
+
+                ensureDecoration(viewer, targetId)
+            }
         }
     }
 
     private fun handleRemoveEntities(
         viewer: Player,
+        state: ViewerState,
         packet: WrapperPlayServerTeams,
-        event: PacketSendEvent,
-        viewerTeams: MutableMap<String, TeamState>,
-        viewerPlayerTeams: MutableMap<String, String>
+        event: PacketSendEvent
     ) {
-        val state =
-            viewerTeams[packet.teamName]
-                ?: return
-
-        val removed =
-            packet.players.toList()
-
-        removed.forEach { name ->
-
-            state.players.remove(name)
-
-            if (
-                viewerPlayerTeams[name] ==
-                packet.teamName
-            ) {
-                viewerPlayerTeams.remove(name)
-            }
-        }
-
-        val decoratedPlayers =
-            removed.filter {
-                isDecorated(
-                    viewer,
-                    it
-                )
-            }
-
-        if (
-            decoratedPlayers.isEmpty()
-        ) {
+        val team = state.teams[packet.teamName] ?: run {
+            debug(
+                "TEAM REMOVE_ENTITIES ignored: unknown team=" +
+                        "${packet.teamName} viewer=${viewer.name}"
+            )
             return
         }
 
-        event.setCancelled(true)
+        val removed = packet.players.toList()
 
-        val normalPlayers =
-            removed.filterNot {
-                it in decoratedPlayers
+        log(
+            "TEAM REMOVE_ENTITIES viewer=${viewer.name} " +
+                    "team=${packet.teamName} players=$removed"
+        )
+
+        val decorated = removed.filter { name ->
+            val targetId = nameToUuid[name.lowercase()]
+            isDecorated(viewer, targetId)
+        }
+
+        removed.forEach { name ->
+            team.players.remove(name)
+
+            if (state.playerTeams[name] == packet.teamName) {
+                state.playerTeams.remove(name)
             }
+        }
 
-        if (
-            normalPlayers.isNotEmpty()
-        ) {
+        if (decorated.isEmpty()) return
+
+        event.isCancelled = true
+
+        val normal = removed.filterNot { it in decorated }
+
+        if (normal.isNotEmpty()) {
             send(
                 viewer,
                 WrapperPlayServerTeams(
                     packet.teamName,
                     TeamMode.REMOVE_ENTITIES,
-                    null as ScoreBoardTeamInfo?,
-                    normalPlayers
+                    Optional.empty<ScoreBoardTeamInfo>(),
+                    normal
                 )
             )
         }
 
-        decoratedPlayers.forEach { name ->
+        decorated.forEach { name ->
+            val targetId = nameToUuid[name.lowercase()] ?: return@forEach
 
-            val target =
-                Bukkit.getPlayerExact(name)
-                    ?: return@forEach
+            val decoration = state.decorations[targetId] ?: return@forEach
 
-            removeDecoration(
-                viewer,
-                target
+            if (decoration.originalTeamName == packet.teamName) {
+                decoration.originalTeamName = null
+            }
+
+            debug(
+                "Target $name removed from original team=${packet.teamName}, " +
+                        "but decoration stays active for viewer=${viewer.name}"
             )
+
+            updateDecoration(viewer, targetId)
         }
     }
 
     private fun handleRemoveTeam(
         viewer: Player,
+        state: ViewerState,
         packet: WrapperPlayServerTeams,
-        event: PacketSendEvent,
-        viewerTeams: MutableMap<String, TeamState>,
-        viewerPlayerTeams: MutableMap<String, String>
+        event: PacketSendEvent
     ) {
-        val state =
-            viewerTeams.remove(
-                packet.teamName
+        val team = state.teams.remove(packet.teamName) ?: run {
+            debug(
+                "TEAM REMOVE ignored: unknown team=" +
+                        "${packet.teamName} viewer=${viewer.name}"
             )
-                ?: return
-
-        state.players.forEach { name ->
-
-            if (
-                viewerPlayerTeams[name] ==
-                packet.teamName
-            ) {
-                viewerPlayerTeams.remove(name)
-            }
-        }
-
-        val decoratedPlayers =
-            state.players.filter {
-                isDecorated(
-                    viewer,
-                    it
-                )
-            }
-
-        if (
-            decoratedPlayers.isEmpty()
-        ) {
             return
         }
 
-        event.setCancelled(true)
+        log(
+            "TEAM REMOVE viewer=${viewer.name} " +
+                    "team=${packet.teamName} players=${team.players}"
+        )
 
-        /*
-         * Remove the original team.
-         */
+        team.players.forEach { name ->
+            if (state.playerTeams[name] == packet.teamName) {
+                state.playerTeams.remove(name)
+            }
+        }
+
+        state.clientTeams.remove(packet.teamName)
+
+        val decorated = team.players.filter { name ->
+            val targetId = nameToUuid[name.lowercase()]
+            isDecorated(viewer, targetId)
+        }
+
+        if (decorated.isEmpty()) return
+
+        event.isCancelled = true
+
         send(
             viewer,
             WrapperPlayServerTeams(
                 packet.teamName,
                 TeamMode.REMOVE,
-                null as ScoreBoardTeamInfo?,
-                emptyList<String>()
+                Optional.empty<ScoreBoardTeamInfo>(),
+                emptyList()
             )
         )
 
-        decoratedPlayers.forEach { name ->
+        decorated.forEach { name ->
+            val targetId = nameToUuid[name.lowercase()] ?: return@forEach
 
-            val target =
-                Bukkit.getPlayerExact(name)
-                    ?: return@forEach
+            state.decorations[targetId]?.originalTeamName = null
 
-            removeDecoration(
-                viewer,
-                target
+            debug(
+                "Original team removed; target=$name keeps voice " +
+                        "decoration for viewer=${viewer.name}"
             )
+
+            updateDecoration(viewer, targetId)
         }
     }
 
-    /**
-     * Refresh a player's nameplate after voice state changes.
-     */
     private fun refresh(
         viewer: Player,
-        target: Player
+        targetId: UUID
     ) {
-        val playerName =
-            target.name
+        if (viewer.uniqueId == targetId) return
 
-        val viewerPlayerTeams =
-            playerTeams[
-                viewer.uniqueId
-            ]
-
-        val viewerTeams =
-            teams[
-                viewer.uniqueId
-            ]
-
-        val originalTeamName =
-            viewerPlayerTeams
-                ?.get(playerName)
-
-        val original =
-            originalTeamName?.let {
-                viewerTeams?.get(it)
-            }
-
-        /*
-         * Muted:
-         * restore the normal nameplate.
-         */
-        if (
-            !shouldDecorate(
-                viewer,
-                playerName
+        val targetName = uuidToName[targetId] ?: run {
+            debug(
+                "REFRESH failed: no name for target UUID=$targetId"
             )
-        ) {
-            if (
-                isDecorated(
-                    viewer,
-                    playerName
-                )
-            ) {
-                removeDecoration(
-                    viewer,
-                    target
-                )
-            }
-
             return
         }
 
-        /*
-         * Existing rank/team.
-         */
-        if (
-            original != null
-        ) {
-            if (
-                isDecorated(
-                    viewer,
-                    playerName
-                )
-            ) {
-                updateDecorated(
-                    viewer = viewer,
-                    target = target,
-                    original = original
-                )
-            } else {
-                decorate(
-                    viewer = viewer,
-                    target = target,
-                    original = original
-                )
-            }
+        val voice = voiceStates[targetId]
 
+        debug(
+            "REFRESH viewer=${viewer.name} target=$targetName " +
+                    "voice=$voice"
+        )
+
+        if (voice == null || voice.muted) {
+            debug(
+                "REFRESH removing decoration viewer=${viewer.name} " +
+                        "target=$targetName"
+            )
+
+            removeDecoration(viewer, targetId)
             return
         }
 
-        /*
-         * No scoreboard team.
-         */
-        if (
-            !isDecorated(
-                viewer,
-                playerName
-            )
-        ) {
-            decorateWithoutOriginalTeam(
-                viewer = viewer,
-                target = target
-            )
-        } else {
-            updateNoTeamDecoration(
-                viewer = viewer,
-                target = target
-            )
+        val state = viewerStates.computeIfAbsent(viewer.uniqueId) {
+            ViewerState()
         }
+
+        if (state.decorations.containsKey(targetId)) {
+            debug(
+                "REFRESH existing decoration viewer=${viewer.name} " +
+                        "target=$targetName"
+            )
+
+            updateDecoration(viewer, targetId)
+            return
+        }
+
+        val originalTeamName = state.playerTeams[targetName]
+
+        log(
+            "REFRESH creating decoration viewer=${viewer.name} " +
+                    "target=$targetName originalTeam=$originalTeamName"
+        )
+
+        state.decorations[targetId] = DecorationState(
+            originalTeamName = originalTeamName
+        )
+
+        ensureDecoration(viewer, targetId)
     }
 
-    /**
-     * Move target into a private client-side team.
-     */
-    private fun decorate(
+    private fun ensureDecoration(
         viewer: Player,
-        target: Player,
-        original: TeamState
+        targetId: UUID
     ) {
-        val key =
-            ViewerTarget(
-                viewer = viewer.uniqueId,
-                target = target.uniqueId
+        val state = viewerStates.computeIfAbsent(viewer.uniqueId) {
+            ViewerState()
+        }
+
+        val targetName = uuidToName[targetId] ?: run {
+            debug(
+                "ensureDecoration failed: no name for UUID=$targetId"
+            )
+            return
+        }
+
+        val decoration = state.decorations[targetId] ?: run {
+            debug(
+                "ensureDecoration failed: no DecorationState " +
+                        "viewer=${viewer.name} target=$targetName"
+            )
+            return
+        }
+
+        val fakeTeam = fakeTeamName(targetId)
+
+        if (state.decoratedTargets.contains(targetId)) {
+            debug(
+                "Decoration already exists viewer=${viewer.name} " +
+                        "target=$targetName fakeTeam=$fakeTeam"
             )
 
-        val fakeTeam =
-            fakeTeamName(
-                viewer,
-                target
+            updateDecoration(viewer, targetId)
+            return
+        }
+
+        val originalTeam = decoration.originalTeamName
+            ?.let { state.teams[it] }
+
+        log(
+            "CREATE DECORATION viewer=${viewer.name} " +
+                    "target=$targetName fakeTeam=$fakeTeam " +
+                    "originalTeam=${originalTeam?.name ?: "none"}"
+        )
+
+        if (originalTeam != null) {
+            debug(
+                "Removing target=$targetName from original team=" +
+                        "${originalTeam.name} for viewer=${viewer.name}"
             )
 
-        /*
-         * Remove from original team on this client.
-         */
-        if (
-            decorated.add(key)
-        ) {
             send(
                 viewer,
                 WrapperPlayServerTeams(
-                    original.teamName,
+                    originalTeam.name,
                     TeamMode.REMOVE_ENTITIES,
-                    null as ScoreBoardTeamInfo?,
-                    listOf(target.name)
+                    Optional.empty<ScoreBoardTeamInfo>(),
+                    listOf(targetName)
                 )
             )
         }
 
-        /*
-         * Create our private copy.
-         */
         send(
             viewer,
             WrapperPlayServerTeams(
                 fakeTeam,
                 TeamMode.CREATE,
-                decoratedInfo(
-                    target = target,
-                    original = original.info
-                ),
-                listOf(target.name)
+                decoratedInfo(targetId, originalTeam),
+                listOf(targetName)
             )
+        )
+
+        state.decoratedTargets.add(targetId)
+
+        debug(
+            "Decoration ACTIVE viewer=${viewer.name} " +
+                    "target=$targetName fakeTeam=$fakeTeam"
         )
     }
 
-    private fun updateDecorated(
+    private fun updateDecoration(
         viewer: Player,
-        target: Player,
-        original: TeamState
+        targetId: UUID
     ) {
-        decorated.add(
-            ViewerTarget(
-                viewer = viewer.uniqueId,
-                target = target.uniqueId
-            )
-        )
+        val state = viewerStates[viewer.uniqueId] ?: return
+        val decoration = state.decorations[targetId] ?: return
+        val targetName = uuidToName[targetId] ?: return
 
-        send(
-            viewer,
-            WrapperPlayServerTeams(
-                fakeTeamName(
-                    viewer,
-                    target
-                ),
-                TeamMode.UPDATE,
-                decoratedInfo(
-                    target = target,
-                    original = original.info
-                ),
-                emptyList<String>()
-            )
-        )
-    }
+        val originalTeam = decoration.originalTeamName
+            ?.let { state.teams[it] }
 
-    private fun decorateWithoutOriginalTeam(
-        viewer: Player,
-        target: Player
-    ) {
-        decorated.add(
-            ViewerTarget(
-                viewer = viewer.uniqueId,
-                target = target.uniqueId
-            )
-        )
-
-        send(
-            viewer,
-            WrapperPlayServerTeams(
-                fakeTeamName(
-                    viewer,
-                    target
-                ),
-                TeamMode.CREATE,
-                decoratedInfo(
-                    target = target,
-                    original = defaultTeamInfo()
-                ),
-                listOf(target.name)
-            )
-        )
-    }
-
-    private fun updateNoTeamDecoration(
-        viewer: Player,
-        target: Player
-    ) {
-        send(
-            viewer,
-            WrapperPlayServerTeams(
-                fakeTeamName(
-                    viewer,
-                    target
-                ),
-                TeamMode.UPDATE,
-                decoratedInfo(
-                    target = target,
-                    original = defaultTeamInfo()
-                ),
-                emptyList<String>()
-            )
-        )
-    }
-
-    /**
-     * Remove EchoWave client-side team and restore
-     * original membership.
-     */
-    private fun removeDecoration(
-        viewer: Player,
-        target: Player
-    ) {
-        val key =
-            ViewerTarget(
-                viewer = viewer.uniqueId,
-                target = target.uniqueId
+        if (!state.decoratedTargets.contains(targetId)) {
+            debug(
+                "updateDecoration found no active fake team; " +
+                        "creating one viewer=${viewer.name} target=$targetName"
             )
 
-        if (
-            !decorated.remove(key)
-        ) {
+            ensureDecoration(viewer, targetId)
             return
         }
 
-        val fakeTeam =
-            fakeTeamName(
-                viewer,
-                target
+        val fakeTeam = fakeTeamName(targetId)
+
+        debug(
+            "UPDATE DECORATION viewer=${viewer.name} " +
+                    "target=$targetName fakeTeam=$fakeTeam " +
+                    "originalTeam=${originalTeam?.name ?: "none"}"
+        )
+
+        send(
+            viewer,
+            WrapperPlayServerTeams(
+                fakeTeam,
+                TeamMode.UPDATE,
+                decoratedInfo(targetId, originalTeam),
+                emptyList()
+            )
+        )
+    }
+
+    private fun removeDecoration(
+        viewer: Player,
+        targetId: UUID
+    ) {
+        val state = viewerStates[viewer.uniqueId] ?: return
+        val targetName = uuidToName[targetId] ?: return
+
+        if (!state.decoratedTargets.contains(targetId)) {
+            debug(
+                "removeDecoration: target=$targetName " +
+                        "not decorated for viewer=${viewer.name}"
             )
 
-        /*
-         * Remove EchoWave team.
-         */
+            state.decorations.remove(targetId)
+            return
+        }
+
+        val decoration = state.decorations[targetId]
+
+        log(
+            "REMOVE DECORATION viewer=${viewer.name} " +
+                    "target=$targetName originalTeam=" +
+                    "${decoration?.originalTeamName ?: "none"}"
+        )
+
+        removeFakeTeamOnly(viewer, targetId)
+
+        state.decorations.remove(targetId)
+
+        val originalTeamName = decoration?.originalTeamName ?: run {
+            debug(
+                "No original team to restore for target=$targetName " +
+                        "viewer=${viewer.name}"
+            )
+            return
+        }
+
+        val originalTeam = state.teams[originalTeamName] ?: run {
+            debug(
+                "Original team $originalTeamName no longer exists; " +
+                        "nothing to restore for target=$targetName"
+            )
+            return
+        }
+
+        if (!state.clientTeams.contains(originalTeamName)) {
+            debug(
+                "Original team $originalTeamName is not known client-side; " +
+                        "cannot ADD target=$targetName"
+            )
+            return
+        }
+
+        debug(
+            "Restoring target=$targetName to original team=" +
+                    "$originalTeamName for viewer=${viewer.name}"
+        )
+
+        send(
+            viewer,
+            WrapperPlayServerTeams(
+                originalTeam.name,
+                TeamMode.ADD_ENTITIES,
+                Optional.empty<ScoreBoardTeamInfo>(),
+                listOf(targetName)
+            )
+        )
+    }
+
+    private fun removeFakeTeamOnly(
+        viewer: Player,
+        targetId: UUID
+    ) {
+        val state = viewerStates[viewer.uniqueId] ?: return
+        val targetName = uuidToName[targetId] ?: targetId.toString()
+
+        if (!state.decoratedTargets.remove(targetId)) {
+            debug(
+                "removeFakeTeamOnly: no fake team for " +
+                        "viewer=${viewer.name} target=$targetName"
+            )
+            return
+        }
+
+        val fakeTeam = fakeTeamName(targetId)
+
+        debug(
+            "REMOVE FAKE TEAM viewer=${viewer.name} " +
+                    "target=$targetName fakeTeam=$fakeTeam"
+        )
+
         send(
             viewer,
             WrapperPlayServerTeams(
                 fakeTeam,
                 TeamMode.REMOVE,
-                null as ScoreBoardTeamInfo?,
-                emptyList<String>()
+                Optional.empty<ScoreBoardTeamInfo>(),
+                emptyList()
             )
         )
-
-        /*
-         * Restore original team membership.
-         */
-        val originalTeam =
-            playerTeams[
-                viewer.uniqueId
-            ]?.get(target.name)
-
-        if (
-            originalTeam != null
-        ) {
-            send(
-                viewer,
-                WrapperPlayServerTeams(
-                    originalTeam,
-                    TeamMode.ADD_ENTITIES,
-                    null as ScoreBoardTeamInfo?,
-                    listOf(target.name)
-                )
-            )
-        }
     }
 
-    /**
-     * Add voice prefix while retaining all original
-     * team formatting.
-     */
     private fun decoratedInfo(
-        target: Player,
-        original: ScoreBoardTeamInfo
+        targetId: UUID,
+        original: TeamState?
     ): ScoreBoardTeamInfo {
+        val voice = voiceStates[targetId]
 
-        val state =
-            voiceStates[
-                target.uniqueId
-            ]
+        val dot = when {
+            voice?.speaking == true -> GREEN_DOT
+            voice?.muted == false -> YELLOW_DOT
+            else -> Component.empty()
+        }
 
-        val voicePrefix =
-            when {
-                state?.muted == true ->
-                    Component.empty()
-
-                state?.speaking == true ->
-                    GREEN_DOT
-
-                else ->
-                    YELLOW_DOT
-            }
-
-        val originalPrefix =
-            original.prefix
-                ?: Component.empty()
-
-        val prefix =
-            voicePrefix.append(
-                originalPrefix
-            )
+        val info = original?.info
 
         return ScoreBoardTeamInfo(
-            original.displayName,
-            prefix,
-            original.suffix,
-            original.tagVisibility,
-            original.collisionRule,
-            original.color,
-            original.optionData
-        )
-    }
-
-    /**
-     * Default team information for players with
-     * no scoreboard team.
-     */
-    private fun defaultTeamInfo():
-        ScoreBoardTeamInfo {
-
-        return ScoreBoardTeamInfo(
-            Component.empty(),
-            Component.empty(),
-            Component.empty(),
-            WrapperPlayServerTeams.NameTagVisibility.ALWAYS,
-            WrapperPlayServerTeams.CollisionRule.ALWAYS,
-            NamedTextColor.WHITE,
-            WrapperPlayServerTeams.OptionData.NONE
+            info?.displayName ?: Component.empty(),
+            info?.prefix ?: Component.empty(),
+            (info?.suffix ?: Component.empty()).append(dot),
+            info?.tagVisibility ?: NameTagVisibility.ALWAYS,
+            info?.collisionRule ?: CollisionRule.ALWAYS,
+            info?.color ?: NamedTextColor.WHITE,
+            info?.optionData ?: OptionData.NONE
         )
     }
 
     private fun shouldDecorate(
-        viewer: Player,
-        playerName: String
+        playerName: String,
+        viewer: Player
     ): Boolean {
+        val targetId = nameToUuid[playerName.lowercase()] ?: return false
 
-        if (
-            viewer.name.equals(
-                playerName,
-                ignoreCase = true
-            )
-        ) {
-            return false
-        }
+        if (targetId == viewer.uniqueId) return false
 
-        val target =
-            Bukkit.getPlayerExact(
-                playerName
-            ) ?: return false
-
-        val state =
-            voiceStates[
-                target.uniqueId
-            ] ?: return false
-
-        return !state.muted
+        return voiceStates[targetId]?.muted == false
     }
 
     private fun isDecorated(
         viewer: Player,
-        playerName: String
+        targetId: UUID?
     ): Boolean {
-
-        val target =
-            Bukkit.getPlayerExact(
-                playerName
-            ) ?: return false
-
-        return decorated.contains(
-            ViewerTarget(
-                viewer = viewer.uniqueId,
-                target = target.uniqueId
-            )
-        )
+        return targetId != null &&
+                viewerStates[viewer.uniqueId]
+                    ?.decoratedTargets
+                    ?.contains(targetId) == true
     }
 
-    /**
-     * PacketEvents 2.13.0 provides sendPacketSilently.
-     *
-     * This prevents our generated team packets from
-     * entering our own outgoing listener again.
-     */
+    private fun fakeTeamName(targetId: UUID): String {
+        val targetPart = targetId
+            .toString()
+            .replace("-", "")
+            .takeLast(13)
+
+        return "$TEAM_PREFIX$targetPart"
+    }
+
     private fun send(
         viewer: Player,
         packet: WrapperPlayServerTeams
     ) {
+        debug(
+            "SEND fake/rewritten TEAMS viewer=${viewer.name} " +
+                    "team=${packet.teamName} mode=${packet.teamMode} " +
+                    "players=${packet.players}"
+        )
+
         PacketEvents.getAPI()
             .playerManager
-            .sendPacketSilently(
-                viewer,
-                packet
+            .sendPacketSilently(viewer, packet)
+    }
+
+    private fun runGlobal(task: () -> Unit) {
+        if (Platform.isFolia) {
+            plugin.server.globalRegionScheduler.run(plugin) {
+                task()
+            }
+        } else {
+            Bukkit.getScheduler().runTask(
+                plugin,
+                Runnable { task() }
             )
+        }
     }
 
-    /**
-     * Client-side team names must be <= 32 characters.
-     */
-    private fun fakeTeamName(
+    private fun runForViewer(
         viewer: Player,
-        target: Player
-    ): String {
-
-        return (
-            ECHO_TEAM_PREFIX +
-                viewer.uniqueId
-                    .toString()
-                    .replace("-", "")
-                    .take(8) +
-                "_" +
-                target.uniqueId
-                    .toString()
-                    .replace("-", "")
-                    .take(8)
-            ).take(32)
+        task: () -> Unit
+    ) {
+        if (Platform.isFolia) {
+            viewer.scheduler.run(
+                plugin,
+                { task() },
+                null
+            )
+        } else {
+            task()
+        }
     }
+
+    private class ViewerState {
+        val teams = ConcurrentHashMap<String, TeamState>()
+        val playerTeams = ConcurrentHashMap<String, String>()
+        val clientTeams = ConcurrentHashMap.newKeySet<String>()
+        val decoratedTargets = ConcurrentHashMap.newKeySet<UUID>()
+        val decorations = ConcurrentHashMap<UUID, DecorationState>()
+    }
+
+    private class TeamState(
+        val name: String,
+        @Volatile var info: ScoreBoardTeamInfo
+    ) {
+        val players = ConcurrentHashMap.newKeySet<String>()
+    }
+
+    private class DecorationState(
+        @Volatile var originalTeamName: String?
+    )
 
     private data class VoiceState(
         val speaking: Boolean,
         val muted: Boolean
-    )
-
-    private data class ViewerTarget(
-        val viewer: UUID,
-        val target: UUID
-    )
-
-    private data class TeamState(
-        val teamName: String,
-        @Volatile
-        var info: ScoreBoardTeamInfo,
-        val players: MutableSet<String>
     )
 }

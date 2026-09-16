@@ -2,6 +2,8 @@
 
 package org.nxblack.echoWave
 
+import com.github.retrooper.packetevents.PacketEvents
+import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import kotlinx.coroutines.*
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -19,13 +21,10 @@ import org.bukkit.plugin.java.JavaPlugin
 import org.nxblack.echoWave.data.*
 import org.nxblack.echoWave.data.BackendState.backendId
 import org.nxblack.echoWave.data.BackendState.instanceId
-import org.nxblack.echoWave.voice.VoiceIndicatorManager
 import org.nxblack.echoWave.voice.VoiceNameplateManager
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
-import com.github.retrooper.packetevents.PacketEvents
-import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.*
@@ -60,7 +59,6 @@ class SculWave : JavaPlugin(), Listener {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         val player = event.player
-
         if (BackendState.roomCode.isBlank()) {
             return
         }
@@ -86,10 +84,9 @@ class SculWave : JavaPlugin(), Listener {
         logger.info("====================================")
 
 
-
     PacketEvents.getAPI().init()
 
-    voiceNameplateManager = VoiceNameplateManager()
+    voiceNameplateManager = VoiceNameplateManager(this)
 
         saveDefaultConfig()
 
@@ -664,8 +661,8 @@ class SculWave : JavaPlugin(), Listener {
 
             logger.info("========== ACTIVATE ==========")
             logger.info("SERVER_URL = $SERVER_URL")
-            logger.info("URI = ${request.uri()}")
-            logger.info("BODY = $requestBody")
+//            logger.info("URI = ${request.uri()}")
+//            logger.info("BODY = $requestBody")
             val response = withContext(Dispatchers.IO) {
                 Http.client.send(
                     request,
