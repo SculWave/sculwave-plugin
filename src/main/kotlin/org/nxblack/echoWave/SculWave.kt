@@ -22,7 +22,6 @@ import org.nxblack.echoWave.data.BackendState.instanceId
 import org.nxblack.echoWave.voice.VoiceNameplateManager
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.*
@@ -699,7 +698,13 @@ class SculWave : JavaPlugin(), Listener {
         return try {
 
 
-            val connection = URL("$SERVER_URL/health").openConnection() as HttpURLConnection
+
+
+
+
+            val uri = URI.create("$SERVER_URL/health")
+            val connection = uri.toURL().openConnection() as HttpURLConnection
+
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
