@@ -8,19 +8,14 @@ import com.github.retrooper.packetevents.event.PacketListenerPriority
 import com.github.retrooper.packetevents.event.PacketSendEvent
 import com.github.retrooper.packetevents.protocol.packettype.PacketType
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.CollisionRule
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.NameTagVisibility
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.OptionData
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.ScoreBoardTeamInfo
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.TeamMode
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams.*
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 import org.nxblack.echoWave.data.Platform
-import java.util.Optional
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -53,7 +48,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         override fun onPacketSend(event: PacketSendEvent) {
             if (event.packetType != PacketType.Play.Server.TEAMS) return
 
-            val viewer = event.getPlayer<Player>() ?: return
+            val viewer = event.getPlayer<Player>()
             val packet = WrapperPlayServerTeams(event)
 
             if (packet.teamName.startsWith(TEAM_PREFIX)) return
@@ -113,36 +108,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         }, 50L, TimeUnit.MILLISECONDS)
     }
 
-    fun updateSpeaking(player: Player, speaking: Boolean) {
-        val current = voiceStates[player.uniqueId]
-
-        debug(
-            "updateSpeaking player=${player.name} " +
-                    "speaking=$speaking current=$current"
-        )
-
-        update(
-            player,
-            speaking,
-            current?.muted ?: false
-        )
-    }
-
-    fun updateMuted(player: Player, muted: Boolean) {
-        val current = voiceStates[player.uniqueId]
-
-        debug(
-            "updateMuted player=${player.name} " +
-                    "muted=$muted current=$current"
-        )
-
-        update(
-            player,
-            current?.speaking ?: false,
-            muted
-        )
-    }
-
     fun clear(player: Player) {
         val targetId = player.uniqueId
         val targetName = player.name
@@ -159,11 +124,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
                 if (viewer.uniqueId == targetId) return@forEach
 
                 runForViewer(viewer) {
-                    debug(
-                        "Removing decoration for disconnected target=" +
-                                "$targetName from viewer=${viewer.name}"
-                    )
-
                     removeDecoration(viewer, targetId)
                 }
             }
@@ -172,9 +132,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
 
     fun refresh(player: Player) {
         val viewerId = player.uniqueId
-
-        log("REFRESH viewer=${player.name}")
-
         runForViewer(player) {
             voiceStates.keys
                 .filter { it != viewerId }
@@ -273,25 +230,14 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
             shouldDecorate(it, viewer)
         }
 
-        debug(
-            "TEAM CREATE analysis viewer=${viewer.name} " +
-                    "team=${packet.teamName} decorated=$decorated"
-        )
 
         if (decorated.isEmpty()) {
-            debug("TEAM CREATE untouched: no decorated players")
             return
         }
 
         event.isCancelled = true
 
         val normal = players.filterNot { it in decorated }
-
-        debug(
-            "TEAM CREATE rewriting viewer=${viewer.name} " +
-                    "team=${packet.teamName} normal=$normal decorated=$decorated"
-        )
-
         send(
             viewer,
             WrapperPlayServerTeams(
@@ -304,20 +250,11 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
 
         decorated.forEach { name ->
             val targetId = nameToUuid[name.lowercase()] ?: run {
-                debug(
-                    "Cannot decorate $name: UUID not known yet"
-                )
                 return@forEach
             }
 
             state.decorations[targetId] = DecorationState(
                 originalTeamName = packet.teamName
-            )
-
-            debug(
-                "Creating decoration state " +
-                        "viewer=${viewer.name} target=$name " +
-                        "originalTeam=${packet.teamName}"
             )
 
             ensureDecoration(viewer, targetId)
@@ -332,17 +269,8 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
     ) {
         val info = packet.teamInfo.orElse(null) ?: return
         val team = state.teams[packet.teamName] ?: run {
-            debug(
-                "TEAM UPDATE ignored: unknown team=" +
-                        "${packet.teamName} viewer=${viewer.name}"
-            )
             return
         }
-
-        log(
-            "TEAM UPDATE viewer=${viewer.name} " +
-                    "team=${packet.teamName} players=${team.players}"
-        )
 
         team.info = info
 
@@ -352,7 +280,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         }
 
         if (decorated.isEmpty()) {
-            debug("TEAM UPDATE untouched: no decorated players")
             return
         }
 
@@ -372,12 +299,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
             val targetId = nameToUuid[name.lowercase()] ?: return@forEach
 
             state.decorations[targetId]?.originalTeamName = packet.teamName
-
-            debug(
-                "Updating fake team because original team changed: " +
-                        "viewer=${viewer.name} target=$name"
-            )
-
             updateDecoration(viewer, targetId)
         }
     }
@@ -389,28 +310,16 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         event: PacketSendEvent
     ) {
         val team = state.teams[packet.teamName] ?: run {
-            debug(
-                "TEAM ADD ignored: unknown team=" +
-                        "${packet.teamName} viewer=${viewer.name}"
-            )
             return
         }
 
         val incoming = packet.players.toList()
 
-        log(
-            "TEAM ADD viewer=${viewer.name} " +
-                    "team=${packet.teamName} players=$incoming"
-        )
 
         incoming.forEach { name ->
             val previousTeamName = state.playerTeams[name]
 
             if (previousTeamName != null && previousTeamName != packet.teamName) {
-                debug(
-                    "Player $name moved from team=$previousTeamName " +
-                            "to team=${packet.teamName}"
-                )
 
                 state.teams[previousTeamName]?.players?.remove(name)
             }
@@ -429,10 +338,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
 
         val normal = incoming.filterNot { it in decorated }
 
-        debug(
-            "TEAM ADD rewriting viewer=${viewer.name} " +
-                    "normal=$normal decorated=$decorated"
-        )
 
         if (normal.isNotEmpty()) {
             send(
@@ -440,7 +345,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
                 WrapperPlayServerTeams(
                     packet.teamName,
                     TeamMode.ADD_ENTITIES,
-                    Optional.empty<ScoreBoardTeamInfo>(),
+                    Optional.empty(),
                     normal
                 )
             )
@@ -450,11 +355,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
             val targetId = nameToUuid[name.lowercase()] ?: return@forEach
 
             state.decorations[targetId]?.originalTeamName = packet.teamName
-
-            debug(
-                "Target $name is decorated; keeping it in fake team " +
-                        "for viewer=${viewer.name}, newOriginal=${packet.teamName}"
-            )
 
             if (isDecorated(viewer, targetId)) {
                 updateDecoration(viewer, targetId)
@@ -475,19 +375,11 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         event: PacketSendEvent
     ) {
         val team = state.teams[packet.teamName] ?: run {
-            debug(
-                "TEAM REMOVE_ENTITIES ignored: unknown team=" +
-                        "${packet.teamName} viewer=${viewer.name}"
-            )
             return
         }
 
         val removed = packet.players.toList()
 
-        log(
-            "TEAM REMOVE_ENTITIES viewer=${viewer.name} " +
-                    "team=${packet.teamName} players=$removed"
-        )
 
         val decorated = removed.filter { name ->
             val targetId = nameToUuid[name.lowercase()]
@@ -514,7 +406,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
                 WrapperPlayServerTeams(
                     packet.teamName,
                     TeamMode.REMOVE_ENTITIES,
-                    Optional.empty<ScoreBoardTeamInfo>(),
+                    Optional.empty(),
                     normal
                 )
             )
@@ -529,11 +421,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
                 decoration.originalTeamName = null
             }
 
-            debug(
-                "Target $name removed from original team=${packet.teamName}, " +
-                        "but decoration stays active for viewer=${viewer.name}"
-            )
-
             updateDecoration(viewer, targetId)
         }
     }
@@ -545,17 +432,8 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         event: PacketSendEvent
     ) {
         val team = state.teams.remove(packet.teamName) ?: run {
-            debug(
-                "TEAM REMOVE ignored: unknown team=" +
-                        "${packet.teamName} viewer=${viewer.name}"
-            )
             return
         }
-
-        log(
-            "TEAM REMOVE viewer=${viewer.name} " +
-                    "team=${packet.teamName} players=${team.players}"
-        )
 
         team.players.forEach { name ->
             if (state.playerTeams[name] == packet.teamName) {
@@ -579,7 +457,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
             WrapperPlayServerTeams(
                 packet.teamName,
                 TeamMode.REMOVE,
-                Optional.empty<ScoreBoardTeamInfo>(),
+                Optional.empty(),
                 emptyList()
             )
         )
@@ -711,7 +589,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
                 WrapperPlayServerTeams(
                     originalTeam.name,
                     TeamMode.REMOVE_ENTITIES,
-                    Optional.empty<ScoreBoardTeamInfo>(),
+                    Optional.empty(),
                     listOf(targetName)
                 )
             )
@@ -794,12 +672,6 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
 
         val decoration = state.decorations[targetId]
 
-        log(
-            "REMOVE DECORATION viewer=${viewer.name} " +
-                    "target=$targetName originalTeam=" +
-                    "${decoration?.originalTeamName ?: "none"}"
-        )
-
         removeFakeTeamOnly(viewer, targetId)
 
         state.decorations.remove(targetId)
@@ -838,7 +710,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
             WrapperPlayServerTeams(
                 originalTeam.name,
                 TeamMode.ADD_ENTITIES,
-                Optional.empty<ScoreBoardTeamInfo>(),
+                Optional.empty(),
                 listOf(targetName)
             )
         )
@@ -871,7 +743,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
             WrapperPlayServerTeams(
                 fakeTeam,
                 TeamMode.REMOVE,
-                Optional.empty<ScoreBoardTeamInfo>(),
+                Optional.empty(),
                 emptyList()
             )
         )
@@ -908,9 +780,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
     ): Boolean {
         val targetId = nameToUuid[playerName.lowercase()] ?: return false
 
-        if (targetId == viewer.uniqueId) return false
-
-        return voiceStates[targetId]?.muted == false
+        return targetId != viewer.uniqueId && voiceStates[targetId]?.muted == false
     }
 
     private fun isDecorated(
@@ -978,8 +848,8 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
     private class ViewerState {
         val teams = ConcurrentHashMap<String, TeamState>()
         val playerTeams = ConcurrentHashMap<String, String>()
-        val clientTeams = ConcurrentHashMap.newKeySet<String>()
-        val decoratedTargets = ConcurrentHashMap.newKeySet<UUID>()
+        val clientTeams = ConcurrentHashMap.newKeySet<String>()!!
+        val decoratedTargets = ConcurrentHashMap.newKeySet<UUID>()!!
         val decorations = ConcurrentHashMap<UUID, DecorationState>()
     }
 
@@ -987,7 +857,7 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         val name: String,
         @Volatile var info: ScoreBoardTeamInfo
     ) {
-        val players = ConcurrentHashMap.newKeySet<String>()
+        val players = ConcurrentHashMap.newKeySet<String>()!!
     }
 
     private class DecorationState(

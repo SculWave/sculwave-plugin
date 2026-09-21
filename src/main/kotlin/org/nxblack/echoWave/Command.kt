@@ -29,7 +29,7 @@ class Command(private val plugin: SculWave) : CommandExecutor {
 
         if (args.isEmpty()) {
             sender.sendMessage("§SculWave")
-            sender.sendMessage("§7/voice m")
+            sender.sendMessage("§7/voice mute")
             sender.sendMessage("§7/voice invite <player>")
             sender.sendMessage("§7/voice join <code>")
             sender.sendMessage("§7/voice leave")

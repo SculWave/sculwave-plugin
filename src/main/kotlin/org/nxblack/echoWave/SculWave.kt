@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 package org.nxblack.echoWave
 
 import com.github.retrooper.packetevents.PacketEvents
@@ -65,6 +63,7 @@ class SculWave : JavaPlugin(), Listener {
 
         player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
         player.sendMessage("§7Use this code in the SculWave app.")
+        voiceNameplateManager.refresh(event.player)
 
     }
 
@@ -76,7 +75,6 @@ class SculWave : JavaPlugin(), Listener {
 
         PacketEvents.getAPI().load()
     }
-
 
     override fun onEnable() {
         logger.info("====================================")
@@ -166,7 +164,6 @@ class SculWave : JavaPlugin(), Listener {
         PacketEvents.getAPI().terminate()
     }
 
-
     private fun loadBackendConfig() {
         instanceId =
             config.getString("instance-id").orEmpty()
@@ -177,12 +174,12 @@ class SculWave : JavaPlugin(), Listener {
 
     private fun updatePositions() {
 
-        if (BackendState.roomCode.isBlank() ||
-            BackendState.authToken.isBlank()
-        )
+        if (BackendState.roomCode.isBlank() || BackendState.authToken.isBlank())
             return
 
         val payload = Bukkit.getOnlinePlayers().map {
+
+            if (isVoiceBanned(it)) return
 
             val settings = getPlayerSettings(it)
 
@@ -206,7 +203,6 @@ class SculWave : JavaPlugin(), Listener {
             )
         }
     }
-
 
     private fun startFoliaScheduler() {
         server.globalRegionScheduler.runAtFixedRate(
@@ -701,8 +697,9 @@ class SculWave : JavaPlugin(), Listener {
 
     private fun checkServer(): Boolean {
         return try {
-            val connection = URL("$SERVER_URL/health").openConnection() as HttpURLConnection
 
+
+            val connection = URL("$SERVER_URL/health").openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
