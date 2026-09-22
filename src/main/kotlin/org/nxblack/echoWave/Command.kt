@@ -34,8 +34,8 @@ class Command(private val plugin: SculWave) : CommandExecutor {
             sender.sendMessage("§7/voice join <code>")
             sender.sendMessage("§7/voice leave")
             sender.sendMessage("§7/voice members")
-            sender.sendMessage("/voice kick <player>")
-            sender.sendMessage("/voice transfer <player>")
+            sender.sendMessage("§7/voice kick <player>")
+            sender.sendMessage("§7/voice transfer <player>")
             return true
         }
         if (sender.hasPermission("sculwave.admin")) {
@@ -47,7 +47,7 @@ class Command(private val plugin: SculWave) : CommandExecutor {
 
         when (args[0].lowercase()) {
 
-            "m" -> {
+            "mute" -> {
                 val settings = plugin.getPlayerSettings(sender)
                 settings.muted = !settings.muted
                 plugin.updateMuteNameTag(sender)
@@ -193,6 +193,13 @@ class Command(private val plugin: SculWave) : CommandExecutor {
 
 
             }
+
+
+
+
+
+
+
 
             else -> {
                 sender.sendMessage("§cUnknown subcommand.")
