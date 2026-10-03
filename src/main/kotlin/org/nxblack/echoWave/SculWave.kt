@@ -48,8 +48,6 @@ class SculWave : JavaPlugin(), Listener {
     fun onQuit(event: PlayerQuitEvent) {
         pendingInvites.remove(event.player.uniqueId)
         playerSettings.remove(event.player.uniqueId)
-
-
         voiceNameplateManager.clear(event.player)
     }
 
@@ -63,6 +61,7 @@ class SculWave : JavaPlugin(), Listener {
         player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
         player.sendMessage("§7Use this code in the SculWave app.")
         voiceNameplateManager.refresh(event.player)
+        
 
     }
 
@@ -142,6 +141,7 @@ class SculWave : JavaPlugin(), Listener {
             }
         }
 
+  
 
         if (Platform.isFolia) {
             startFoliaScheduler()

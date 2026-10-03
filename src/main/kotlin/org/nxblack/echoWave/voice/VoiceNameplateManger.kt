@@ -85,27 +85,41 @@ class VoiceNameplateManager(private val plugin: JavaPlugin) {
         )
 
         if (oldState == newState) {
-            debug("No voice-state change for $name")
-            return
-        }
+    debug("No voice-state change for $name, refreshing viewer")
+
+    runForViewer(player) {
+        refresh(player)
+    }
+
+    return
+}
 
         pendingUpdates.remove(uuid)?.cancel(false)
 
-        pendingUpdates[uuid] = updateExecutor.schedule({
-            debug("Applying voice update to viewers for target=$name")
+pendingUpdates[uuid] = updateExecutor.schedule({
+    debug("Applying voice update to viewers for target=$name")
 
-            runGlobal {
-                Bukkit.getOnlinePlayers().toList().forEach { viewer ->
-                    if (viewer.uniqueId == uuid) return@forEach
+    runGlobal {
+        val viewers = Bukkit.getOnlinePlayers().toList()
 
-                    runForViewer(viewer) {
-                        refresh(viewer, uuid)
-                    }
+        viewers.forEach { viewer ->
+            if (viewer.uniqueId == uuid) {
+                // Rebuild this player's view after reconnect.
+                // This makes already-speaking players visible again.
+                runForViewer(viewer) {
+                    refresh(viewer)
+                }
+            } else {
+                // Update this player's indicator for everyone else.
+                runForViewer(viewer) {
+                    refresh(viewer, uuid)
                 }
             }
+        }
+    }
 
-            pendingUpdates.remove(uuid)
-        }, 50L, TimeUnit.MILLISECONDS)
+    pendingUpdates.remove(uuid)
+}, 50L, TimeUnit.MILLISECONDS)
     }
 
     fun clear(player: Player) {
