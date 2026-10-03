@@ -54,15 +54,50 @@ class SculWave : JavaPlugin(), Listener {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         val player = event.player
-        if (BackendState.roomCode.isBlank()) {
-            return
+
+        if (BackendState.roomCode.isNotBlank()) {
+            player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
+            player.sendMessage("§7Use this code in the SculWave app.")
         }
 
-        player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
-        player.sendMessage("§7Use this code in the SculWave app.")
-        voiceNameplateManager.refresh(event.player)
-        
+        voiceNameplateManager.refresh(player)
+        if (Platform.isFolia) {
+            player.scheduler.runDelayed(
+                this,
+                { _ -> if (player.isOnline) { voiceNameplateManager.refresh(player) } },
+                null,
+                20L
+            )
 
+            // Second rebuild for reconnects where the initial scoreboard state
+            // arrives later than expected.
+            player.scheduler.runDelayed(
+                this,
+                { _ ->
+                    if (player.isOnline) {
+                        voiceNameplateManager.refresh(player)
+                    }
+                },
+                null,
+                60L
+            )
+        } else {
+            server.scheduler.runTaskLater(this,
+                Runnable {
+                if (player.isOnline) { voiceNameplateManager.refresh(player) }
+                },
+                20L
+            )
+            server.scheduler.runTaskLater(
+                this,
+                Runnable {
+                    if (player.isOnline) {
+                        voiceNameplateManager.refresh(player)
+                    }
+                },
+                60L
+            )
+        }
     }
 
 
@@ -176,25 +211,22 @@ class SculWave : JavaPlugin(), Listener {
         if (BackendState.roomCode.isBlank() || BackendState.authToken.isBlank())
             return
 
-        val payload = Bukkit.getOnlinePlayers().map {
-
-            if (isVoiceBanned(it)) return
-
-            val settings = getPlayerSettings(it)
-
-            PositionPayload(
-                gamertag = it.name,
-                x = it.location.blockX,
-                y = it.location.blockY,
-                z = it.location.blockZ,
-                dimension = it.world.name,
-                groupId = settings.groupId,
-                isMuted = settings.muted,
-                muteAll = settings.muteAll,
-                groupOnly = settings.groupOnly
-            )
-        }
-
+        val payload = Bukkit.getOnlinePlayers()
+            .filterNot { isVoiceBanned(it) }
+            .map {
+                val settings = getPlayerSettings(it)
+                PositionPayload(
+                    gamertag = it.name,
+                    x = it.location.blockX,
+                    y = it.location.blockY,
+                    z = it.location.blockZ,
+                    dimension = it.world.name,
+                    groupId = settings.groupId,
+                    isMuted = settings.muted,
+                    muteAll = settings.muteAll,
+                    groupOnly = settings.groupOnly
+                )
+            }
         scope.launch {
 
             backendSocket.sendHeartbeat(

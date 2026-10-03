@@ -145,8 +145,20 @@ pendingUpdates[uuid] = updateExecutor.schedule({
     }
 
     fun refresh(player: Player) {
-        val viewerId = player.uniqueId
         runForViewer(player) {
+            val viewerId = player.uniqueId
+
+            viewerStates[viewerId]
+                ?.decoratedTargets
+                ?.toList()
+                ?.forEach { targetId ->
+                    removeFakeTeamOnly(player, targetId)
+                }
+
+
+            viewerStates[viewerId]?.decoratedTargets?.clear()
+            viewerStates[viewerId]?.decorations?.clear()
+
             voiceStates.keys
                 .filter { it != viewerId }
                 .forEach { targetId ->
@@ -154,6 +166,9 @@ pendingUpdates[uuid] = updateExecutor.schedule({
                 }
         }
     }
+
+
+
 
     fun clearAll() {
         log("CLEAR ALL")
