@@ -189,9 +189,10 @@ class SculWave : JavaPlugin(), Listener {
                 z = it.location.blockZ,
                 dimension = it.world.name,
                 groupId = settings.groupId,
-                isMuted = settings.muted
+                isMuted = settings.muted,
+                muteAll = settings.muteAll,
+                groupOnly = settings.groupOnly
             )
-
         }
 
         scope.launch {

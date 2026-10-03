@@ -28,8 +28,13 @@ class Command(private val plugin: SculWave) : CommandExecutor {
         }
 
         if (args.isEmpty()) {
-            sender.sendMessage("§SculWave")
+            sender.sendMessage("§6[SculWave] Voice Commands")
             sender.sendMessage("§7/voice mute")
+            sender.sendMessage("§7/voice mute <player>")
+            sender.sendMessage("§7/voice unmute <player>")
+            sender.sendMessage("§7/voice muteall")
+            sender.sendMessage("§7/voice unmuteall")
+            sender.sendMessage("§7/voice group")
             sender.sendMessage("§7/voice invite <player>")
             sender.sendMessage("§7/voice join <code>")
             sender.sendMessage("§7/voice leave")
@@ -47,16 +52,64 @@ class Command(private val plugin: SculWave) : CommandExecutor {
 
         when (args[0].lowercase()) {
 
+
             "mute" -> {
-                val settings = plugin.getPlayerSettings(sender)
-                settings.muted = !settings.muted
-                plugin.updateMuteNameTag(sender)
-                sender.sendMessage(
-                    if(settings.muted)"§cVoice chat muted."
-                    else "§aVoice chat unmuted."
-                )
+
+                // /voice mute
+                if (args.size == 1) {
+                    val settings = plugin.getPlayerSettings(sender)
+                    settings.muted = !settings.muted
+                    plugin.updateMuteNameTag(sender)
+                    sender.sendMessage(if (settings.muted) "§cVoice chat muted." else "§aVoice chat unmuted.")
+                    return true
+                }
+                // /voice mute <player>
 
             }
+
+
+
+            "muteall" -> {
+
+                val settings = plugin.getPlayerSettings(sender)
+
+                settings.muteAll = true
+
+                sender.sendMessage("§cYou muted everyone.")
+            }
+
+
+            "unmuteall" -> {
+
+                val settings = plugin.getPlayerSettings(sender)
+
+                settings.muteAll = false
+
+                sender.sendMessage("§aYou unmuted everyone.")
+            }
+            "group" -> {
+
+                val settings = plugin.getPlayerSettings(sender)
+
+                if (settings.groupId == null) {
+                    sender.sendMessage("§cYou are not in a group.")
+                    return true
+                }
+
+                settings.groupOnly = !settings.groupOnly
+
+                if (settings.groupOnly) {
+                    sender.sendMessage("§aGroup-only voice enabled.")
+                    sender.sendMessage("§7You can now only hear and speak to your group.")
+                } else {
+                    sender.sendMessage("§eGroup-only voice disabled.")
+                    sender.sendMessage("§7Normal proximity voice restored.")
+                }
+            }
+
+
+
+
 
             "invite" -> {
                 if (args.size < 2) {

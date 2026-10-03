@@ -31,6 +31,7 @@ class BackendSocketClient(
             .setReconnection(true)
             .setReconnectionAttempts(Int.MAX_VALUE)
             .setReconnectionDelay(2000)
+            .setReconnectionDelayMax(10000)
             .build()
 
         options.path = "/socket.io"
@@ -42,14 +43,10 @@ class BackendSocketClient(
         )
 
         socket.on(Socket.EVENT_CONNECT) {
+            authenticated = false
 
-            plugin.logger.info(
-                "[BackendSocket] Connected (${socket.id()})"
-            )
-
-            plugin.logger.info(
-                "[BackendSocket] Requesting backend registration..."
-            )
+            plugin.logger.info("[BackendSocket] Connected (${socket.id()})")
+            plugin.logger.info("[BackendSocket] Registering backend...")
 
             socket.emit(
                 "backend-register",
@@ -57,8 +54,8 @@ class BackendSocketClient(
                     .put("backendId", backendId)
                     .put("instanceId", instanceId)
             )
-
         }
+
 
         socket.on("backend-register-success") { args ->
 
@@ -88,33 +85,21 @@ class BackendSocketClient(
         }
 
         socket.on("backend-register-failed") { args ->
-
-            plugin.logger.severe(
-                "[BackendSocket] Registration failed: ${args.firstOrNull()}"
-            )
             authenticated = false
-            socket.disconnect()
-
+            plugin.logger.severe("[BackendSocket] Registration failed: ${args.firstOrNull()}")
         }
 
         socket.on("backend-auth-success") {
 
             authenticated = true
 
-            plugin.logger.info(
-                "[BackendSocket] Authenticated"
-            )
+            plugin.logger.info("[BackendSocket] Authenticated")
 
         }
 
         socket.on("backend-auth-failed") { args ->
-
             authenticated = false
-            socket.disconnect()
-            plugin.logger.severe(
-                "[BackendSocket] Authentication failed: ${args.firstOrNull()}"
-            )
-
+            plugin.logger.severe("[BackendSocket] Authentication failed: ${args.firstOrNull()}")
         }
 
         socket.on(Socket.EVENT_DISCONNECT) { args ->
@@ -122,9 +107,7 @@ class BackendSocketClient(
             authenticated = false
             authToken = null
 
-            plugin.logger.warning(
-                "[BackendSocket] Disconnected: ${args.firstOrNull()}"
-            )
+            plugin.logger.warning("[BackendSocket] Disconnected: ${args.firstOrNull()}")
 
         }
 
@@ -148,23 +131,22 @@ class BackendSocketClient(
 
 
         socket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-
             authenticated = false
-
-            plugin.logger.severe(
-                "[BackendSocket] Connect error: ${args.firstOrNull()}"
-            )
-
+            plugin.logger.severe("[BackendSocket] Connect error: ${args.firstOrNull()}")
         }
 
         val manager = socket.io()
 
         manager.on(io.socket.client.Manager.EVENT_RECONNECT) {
-            plugin.logger.info("Reconnected")
+            plugin.logger.info("[BackendSocket] Reconnected")
         }
 
         manager.on(io.socket.client.Manager.EVENT_RECONNECT_ATTEMPT) {
-            plugin.logger.info("Reconnect attempt")
+            plugin.logger.info("[BackendSocket] Reconnect attempt")
+        }
+
+        manager.on(io.socket.client.Manager.EVENT_RECONNECT_FAILED) {
+            plugin.logger.severe("[BackendSocket] Reconnection failed")
         }
 
         socket.connect()
@@ -177,10 +159,8 @@ class BackendSocketClient(
             return
 
         if (socket.connected()) {
-
             socket.emit("backend-shutdown")
-
-            socket.close()
+            socket.disconnect()
 
         }
 
@@ -199,7 +179,6 @@ class BackendSocketClient(
         val playerArray = JSONArray()
 
         players.forEach { player ->
-
             playerArray.put(
                 JSONObject()
                     .put("gamertag", player.gamertag)
@@ -209,10 +188,10 @@ class BackendSocketClient(
                     .put("dimension", player.dimension)
                     .put("groupId", player.groupId)
                     .put("isMuted", player.isMuted)
+                    .put("muteAll", player.muteAll)
+                    .put("groupOnly", player.groupOnly)
             )
-
         }
-
         socket.emit(
             "backend-heartbeat",
             JSONObject()
