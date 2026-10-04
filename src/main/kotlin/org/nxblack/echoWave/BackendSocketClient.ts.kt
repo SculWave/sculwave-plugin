@@ -188,8 +188,6 @@ class BackendSocketClient(
                     .put("dimension", player.dimension)
                     .put("groupId", player.groupId)
                     .put("isMuted", player.isMuted)
-                    .put("muteAll", player.muteAll)
-                    .put("groupOnly", player.groupOnly)
             )
         }
         socket.emit(

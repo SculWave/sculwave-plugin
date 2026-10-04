@@ -10,7 +10,5 @@ data class PositionPayload(
     val z: Int,
     val dimension: String,
     val isMuted: Boolean? = false,
-    val muteAll: Boolean? = false,
-    val groupOnly: Boolean? = false,
     val groupId: String? = null
 )
