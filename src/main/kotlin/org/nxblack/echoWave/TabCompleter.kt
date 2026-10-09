@@ -9,10 +9,7 @@ import org.bukkit.entity.Player
 class TabCompleter(private val plugin: SculWave) : TabCompleter {
 
     companion object {
-
         private val PLAYER_COMMANDS = setOf(
-            "mute",
-            "unmute",
             "invite",
             "kick",
             "transfer",
@@ -31,12 +28,8 @@ class TabCompleter(private val plugin: SculWave) : TabCompleter {
 
         // First argument
         if (args.size == 1) {
-
             val commands = mutableListOf(
-                "mute",
-                "muteall",
-                "unmuteall",
-                "group",
+                "m",
                 "invite",
                 "join",
                 "leave",
@@ -54,18 +47,11 @@ class TabCompleter(private val plugin: SculWave) : TabCompleter {
                 )
             }
 
-            return commands
-                .filter {
-                    it.startsWith(
-                        args[0],
-                        ignoreCase = true
-                    )
-                }
+            return commands.filter { it.startsWith(args[0], ignoreCase = true) }
         }
 
         // Second argument
         if (args.size == 2) {
-
             when (args[0].lowercase()) {
 
                 "join" -> {
@@ -73,24 +59,14 @@ class TabCompleter(private val plugin: SculWave) : TabCompleter {
 
                     return plugin.pendingInvites[player.uniqueId]
                         ?.map { it.code }
-                        ?.filter {
-                            it.startsWith(
-                                args[1],
-                                ignoreCase = true
-                            )
-                        }
+                        ?.filter { it.startsWith(args[1], ignoreCase = true) }
                         ?: emptyList()
                 }
 
                 in PLAYER_COMMANDS -> {
                     return Bukkit.getOnlinePlayers()
                         .map { it.name }
-                        .filter {
-                            it.startsWith(
-                                args[1],
-                                ignoreCase = true
-                            )
-                        }
+                        .filter { it.startsWith(args[1], ignoreCase = true) }
                 }
             }
         }

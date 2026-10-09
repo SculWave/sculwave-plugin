@@ -160,6 +160,7 @@ class SculWave : JavaPlugin(), Listener {
             setExecutor(Command(this@SculWave))
             tabCompleter = TabCompleter(this@SculWave)
         }
+        getCommand("vm")?.setExecutor(Command(this))
 
 
         server.pluginManager.registerEvents(this, this)
@@ -675,6 +676,8 @@ class SculWave : JavaPlugin(), Listener {
                     platform = "paper",
                     pluginVersion = pluginMeta.version,
                     minecraftVersion = Bukkit.getMinecraftVersion(),
+                    entryPoint = config.getBoolean("entry-point", false),
+                    entryPointPriority = config.getInt("entry-point-priority", 1).takeIf { it >= 1 },
                 )
             )
 

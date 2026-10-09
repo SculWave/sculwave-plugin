@@ -23,12 +23,23 @@ backend-id: ""
 # or any server where voice chat should be disabled.
 voice-enabled: true
 
+#entry-point: false — normal backend by default.
+#entry-point: true — advertise this backend as a network entry point.
+#entry-point-priority: 1 — preferred entry point; 2, 3, etc. are fallbacks.
+#
+
+entry-point: false
+entry-point-priority: 1
+
+
+
 # ==========================================
 # Voice Moderation
 # ==========================================
 
 # UUIDs of players permanently banned from using SculWave voice.
 # Managed automatically by in-game moderation commands.
+
 voice-bans: []
 
 # ==========================================

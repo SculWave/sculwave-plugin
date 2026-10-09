@@ -5,8 +5,10 @@ main: org.nxblack.echoWave.SculWave
 api-version: '26.1'
 commands:
   voice:
-    description: SculWave Voice
-    usage: /echo
+    description: SculWave voice commands
+    aliases: [vc]
+  vm:
+    description: Toggle your voice mute
 permissions:
   sculwave.admin:
     description: Allows administrative SculWave commands
