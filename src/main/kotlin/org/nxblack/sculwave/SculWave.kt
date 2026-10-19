@@ -30,7 +30,6 @@ import java.util.logging.Level
 
 class SculWave : JavaPlugin(), Listener {
     companion object {
-        const val SERVER_URL = "https://sculwave.com"
         const val GROUP_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ34578"
     }
 
@@ -43,6 +42,10 @@ class SculWave : JavaPlugin(), Listener {
     val voiceStateManager = VoiceStateManager()
     private lateinit var backendSocket: BackendSocketClient
     lateinit var voiceNameplateManager: VoiceNameplateManager
+
+    private val serverUrl: String
+        get() = config.getString("server-url", "https://sculwave.com")!!
+            .trimEnd('/')
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
@@ -146,7 +149,7 @@ class SculWave : JavaPlugin(), Listener {
 
             backendSocket = BackendSocketClient(
                 plugin = this@SculWave,
-                serverUrl = SERVER_URL,
+                serverUrl = serverUrl,
                 backendId = backendId,
                 instanceId = instanceId
             )
@@ -613,7 +616,7 @@ class SculWave : JavaPlugin(), Listener {
 
             backendSocket = BackendSocketClient(
                 plugin = this@SculWave,
-                serverUrl = SERVER_URL,
+                serverUrl = serverUrl,
                 backendId = backendId,
                 instanceId = instanceId
             )
@@ -682,14 +685,14 @@ class SculWave : JavaPlugin(), Listener {
             )
 
             val request = HttpRequest.newBuilder()
-                .uri(URI.create("$SERVER_URL/api/backend/activate"))
+                .uri(URI.create("$serverUrl/api/backend/activate"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build()
 
 
             logger.info("========== ACTIVATE ==========")
-            logger.info("SERVER_URL = $SERVER_URL")
+            logger.info("SERVER_URL = $serverUrl")
 //            logger.info("URI = ${request.uri()}")
 //            logger.info("BODY = $requestBody")
             val response = withContext(Dispatchers.IO) {
@@ -736,7 +739,7 @@ class SculWave : JavaPlugin(), Listener {
 
 
 
-            val uri = URI.create("$SERVER_URL/health")
+            val uri = URI.create("$serverUrl/health")
             val connection = uri.toURL().openConnection() as HttpURLConnection
 
             connection.requestMethod = "GET"
