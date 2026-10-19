@@ -1,7 +1,7 @@
 name: SculWave
 version: '${version}'
 
-main: org.nxblack.echoWave.SculWave
+main: org.nxblack.sculwave.SculWave
 api-version: '26.1'
 commands:
   voice:

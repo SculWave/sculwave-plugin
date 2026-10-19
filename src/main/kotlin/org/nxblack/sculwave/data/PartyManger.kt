@@ -1,4 +1,4 @@
-package org.nxblack.echoWave.data
+package org.nxblack.sculwave.data
 
 import java.util.concurrent.ConcurrentHashMap
 

@@ -1,4 +1,4 @@
-package org.nxblack.echoWave
+package org.nxblack.sculwave
 import java.net.http.HttpClient
 import java.time.Duration
 

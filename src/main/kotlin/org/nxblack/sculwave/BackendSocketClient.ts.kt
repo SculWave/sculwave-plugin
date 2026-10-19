@@ -1,13 +1,13 @@
-package org.nxblack.echoWave
+package org.nxblack.sculwave
 
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.engineio.client.transports.WebSocket
 import org.json.JSONArray
 import org.json.JSONObject
-import org.nxblack.echoWave.data.BackendState
-import org.nxblack.echoWave.data.PositionPayload
-import org.nxblack.echoWave.data.VoicePlayerState
+import org.nxblack.sculwave.data.BackendState
+import org.nxblack.sculwave.data.PositionPayload
+import org.nxblack.sculwave.data.VoicePlayerState
 
 class BackendSocketClient(
     private val plugin: SculWave,

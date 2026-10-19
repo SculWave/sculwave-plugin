@@ -1,4 +1,4 @@
-package org.nxblack.echoWave
+package org.nxblack.sculwave
 
 import com.github.retrooper.packetevents.PacketEvents
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
@@ -16,10 +16,10 @@ import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
-import org.nxblack.echoWave.data.*
-import org.nxblack.echoWave.data.BackendState.backendId
-import org.nxblack.echoWave.data.BackendState.instanceId
-import org.nxblack.echoWave.voice.VoiceNameplateManager
+import org.nxblack.sculwave.data.*
+import org.nxblack.sculwave.data.BackendState.backendId
+import org.nxblack.sculwave.data.BackendState.instanceId
+import org.nxblack.sculwave.voice.VoiceNameplateManager
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.http.HttpRequest

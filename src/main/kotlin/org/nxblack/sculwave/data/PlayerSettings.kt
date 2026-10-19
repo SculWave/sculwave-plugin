@@ -1,7 +1,7 @@
-package org.nxblack.echoWave.data
+package org.nxblack.sculwave.data
 
 import kotlinx.serialization.Serializable
-import java.util.UUID
+
 @Serializable
 data class PlayerSettings(
     var muted: Boolean = false,

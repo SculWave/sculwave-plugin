@@ -1,4 +1,4 @@
-package org.nxblack.echoWave.voice
+package org.nxblack.sculwave.voice
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
@@ -7,7 +7,7 @@ import org.bukkit.entity.Player
 import org.bukkit.entity.TextDisplay
 import org.bukkit.util.Transformation
 import org.joml.Vector3f
-import org.nxblack.echoWave.SculWave
+import org.nxblack.sculwave.SculWave
 import java.util.UUID
 
 class VoiceIndicatorManager(

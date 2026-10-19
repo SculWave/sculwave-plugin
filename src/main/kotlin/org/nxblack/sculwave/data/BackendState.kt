@@ -1,7 +1,7 @@
-package org.nxblack.echoWave.data
+package org.nxblack.sculwave.data
 
 import org.bukkit.Bukkit
-import org.nxblack.echoWave.SculWave
+import org.nxblack.sculwave.SculWave
 
 object BackendState {
 

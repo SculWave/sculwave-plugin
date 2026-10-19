@@ -5,6 +5,11 @@
 # The plugin will automatically generate and cache the
 # instance ID and backend ID after successful activation.
 
+# SculWave backend URL
+server-url: "https://sculwave.com"
+
+
+
 activation-key: ""
 
 # Automatically managed by SculWave.

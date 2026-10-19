@@ -1,6 +1,6 @@
 @file:Suppress("DEPRECATION")
 
-package org.nxblack.echoWave.voice
+package org.nxblack.sculwave.voice
 
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.event.PacketListenerAbstract
@@ -14,7 +14,7 @@ import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
-import org.nxblack.echoWave.data.Platform
+import org.nxblack.sculwave.data.Platform
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors

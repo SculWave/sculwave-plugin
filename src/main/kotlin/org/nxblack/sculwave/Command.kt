@@ -1,4 +1,4 @@
-package org.nxblack.echoWave
+package org.nxblack.sculwave
 
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
