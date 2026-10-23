@@ -1,8 +1,7 @@
-# EchoWave
+# Sculwave
 
-**EchoWave** is a lightweight proximity voice integration for Minecraft that connects Java Edition, Bedrock Edition (via Geyser), and the EchoWave mobile application.
+**Sculwave** is a lightweight proximity voice integration for Minecraft that connects Java Edition, Bedrock Edition (via Geyser), and the EchoWave mobile application.
 
-Unlike traditional voice chat mods, EchoWave requires **no client-side Java mod**. Players simply join the server, enter the room code shown by the plugin into the EchoWave app, and begin talking with nearby players.
 
 ---
 
@@ -16,19 +15,17 @@ Unlike traditional voice chat mods, EchoWave requires **no client-side Java mod*
 * 🔇 Individual mute toggle
 * 🔨 Voice bans for administrators
 * 🔊 Configurable sounds
-* ⚡ Lightweight HTTP communication
-* 🌍 Multi-world support
-* 🔄 Automatic room recreation if the backend restarts
+* 🔄 Automatic room recreation if connection loss restarts
 
 ---
 
 ## Supported Servers
 
 * Paper
-* Purpur
-* Pufferfish
-* Spigot
-* Folia *(experimental)*
+* Purpur *(Beta)*
+* Pufferfish *(Beta)*
+* Spigot *(Beta)*
+* Folia 
 
 ---
 
@@ -48,23 +45,23 @@ Unlike traditional voice chat mods, EchoWave requires **no client-side Java mod*
 
 | Command                   | Description                     |
 | ------------------------- | ------------------------------- |
-| `/echo`                   | Shows help                      |
-| `/echo mute`              | Toggle voice chat               |
-| `/echo invite <player>`   | Invite a player to your group   |
-| `/echo join <code>`       | Join a group                    |
-| `/echo leave`             | Leave your current group        |
-| `/echo members`           | View group members              |
-| `/echo kick <player>`     | Remove a member from your group |
-| `/echo transfer <player>` | Transfer group ownership        |
+| `/vc`                   | Shows help                      |
+| `/vm`              | Toggle voice chat               |
+| `/vc invite <player>`   | Invite a player to your group   |
+| `/vc join <code>`       | Join a group                    |
+| `/vc leave`             | Leave your current group        |
+| `/vc members`           | View group members              |
+| `/vc kick <player>`     | Remove a member from your group |
+| `/vc transfer <player>` | Transfer group ownership        |
 
 ### Administrator Commands
 
 | Command                     | Description                            |
 | --------------------------- | -------------------------------------- |
-| `/echo voiceban <player>`   | Prevent a player from using voice chat |
-| `/echo voiceunban <player>` | Remove a voice ban                     |
-| `/echo voicecheck <player>` | Check a player's voice status          |
-| `/echo reload`              | Reload the configuration               |
+| `/vc voiceban <player>`   | Prevent a player from using voice chat |
+| `/vc voiceunban <player>` | Remove a voice ban                     |
+| `/vc voicecheck <player>` | Check a player's voice status          |
+| `/vc reload`              | Reload the configuration               |
 
 ---
 
@@ -72,7 +69,7 @@ Unlike traditional voice chat mods, EchoWave requires **no client-side Java mod*
 
 | Permission       | Description                          |
 | ---------------- | ------------------------------------ |
-| `echowave.admin` | Access to all administrator commands |
+| `sculwave.admin` | Access to all administrator commands |
 
 Default: **OP**
 
@@ -81,18 +78,73 @@ Default: **OP**
 ## Configuration
 
 ```yaml
+
+# SculWave backend URL
+server-url: "https://sculwave.com"
+#url to your self-hosted sculwave server if you're not using the sculwave cloud service
+
+# Your unique activation key from the SculWave Dashboard.
+# The plugin will automatically generate and cache the
+# instance ID and backend ID after successful activation.
+activation-key: ""
+
+
+
+# Automatically managed by SculWave.
+# Do not edit these values manually.
+instance-id: ""
+backend-id: ""
+
+# Enables or disables voice chat for this Minecraft server.
+#
+# true  - Players receive LiveKit voice and can communicate.
+# false - Players remain connected to the SculWave network and
+#         automatic server switching still works, but no voice
+#         session is created while they are on this server.
+#
+# This is useful for hubs, lobbies, AFK servers, minigames,
+# or any server where voice chat should be disabled.
+voice-enabled: true
+
+#entry-point: false — normal backend by default.
+#entry-point: true — advertise this backend as a network entry point.
+#entry-point-priority: 1 — preferred entry point; 2, 3, etc. are fallbacks.
+#
+
+entry-point: false
+entry-point-priority: 1
+
+
+
+# ==========================================
+# Voice Moderation
+# ==========================================
+
+# UUIDs of players permanently banned from using SculWave voice.
+# Managed automatically by in-game moderation commands.
+
 voice-bans: []
 
-server-id: survival
+# ==========================================
+# Sound Effects
+# ==========================================
 
 sounds:
   enabled: true
 
   join: entity.player.levelup
+  leave: entity.experience_orb.pickup
   invite: block.note_block.chime
   invite-sent: block.note_block.bell
   kick: entity.villager.no
   transfer: ui.toast.challenge_complete
+
+# ==========================================
+# Debug
+# ==========================================
+
+# Enables additional diagnostic logging.
+debug: false
 ```
 
 ---
@@ -114,7 +166,7 @@ Features include:
 
 ## Bedrock Support
 
-EchoWave fully supports Bedrock players through:
+Sculwave fully supports Bedrock players through:
 
 * Geyser
 * Floodgate
@@ -133,13 +185,13 @@ This prevents voice chat between:
 * Survival ↔ Skyblock
 * Lobby ↔ Minigames
 
-making EchoWave suitable for multi-world and networked servers.
+making Sculwave suitable for multi-world and networked servers.
 
 ---
 
 ## Voice Bans
 
-Administrators can permanently prevent players from using EchoWave.
+Administrators can permanently prevent players from using Sculwave.
 
 Voice bans persist across server restarts.
 
@@ -149,13 +201,13 @@ Voice bans persist across server restarts.
 
 When players join the server, they receive the generated room code.
 
-Simply open the EchoWave app, enter the room code, and connect.
+Simply open the Sculwave app, enter the room code, and connect.
 
 ---
 
 ## Backend
 
-EchoWave communicates with a secure backend service that:
+Sculwave communicates with a secure backend service that:
 
 * Maintains active voice rooms
 * Receives player position updates
@@ -171,9 +223,3 @@ EchoWave communicates with a secure backend service that:
 * Internet connection for backend communication
 
 ---
-
-## License
-
-Copyright © EchoWave.
-
-All rights reserved.

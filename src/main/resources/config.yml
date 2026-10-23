@@ -7,7 +7,7 @@
 
 # SculWave backend URL
 server-url: "https://sculwave.com"
-
+#url to your self-hosted sculwave server if you're not using the sculwave cloud service
 
 
 activation-key: ""
