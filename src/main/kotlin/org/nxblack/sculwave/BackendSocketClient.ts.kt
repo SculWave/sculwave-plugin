@@ -18,6 +18,8 @@ class BackendSocketClient(
 
     private lateinit var socket: Socket
 
+    // Also read from Simple Voice Chat's audio thread (sendSvcAudio).
+    @Volatile
     private var authenticated = false
     private var authToken: String? = null
 
@@ -120,13 +122,22 @@ class BackendSocketClient(
                 connected = json.optBoolean("connected"),
                 muted = json.optBoolean("muted"),
                 speaking = json.optBoolean("speaking"),
-                timestamp = json.optLong("timestamp")
+                timestamp = json.optLong("timestamp"),
+                bridged = json.optBoolean("bridged", false)
             )
             plugin.voiceStateManager.update(state)
 
 //            plugin.logger.info(
 //                "[VoiceState] ${state.gamertag} connected=${state.connected} muted=${state.muted} speaking=${state.speaking}"
 //          )
+        }
+
+        // Simple Voice Chat bridge: one Opus frame from an app player, to be played to SVC players.
+        // An empty frame marks the end of an utterance.
+        socket.on("svc-playback") { args ->
+            val speaker = args.getOrNull(0) as? String ?: return@on
+            val opus = args.getOrNull(1) as? ByteArray ?: return@on
+            plugin.svcBridge.onPlayback(speaker, opus)
         }
 
 
@@ -167,9 +178,19 @@ class BackendSocketClient(
 
     }
 
+    /** Forwards one Opus frame from a Simple Voice Chat player. Safe to call from any thread. */
+    fun sendSvcAudio(gamertag: String, opus: ByteArray) {
+        if (!authenticated || !socket.connected()) {
+            return
+        }
+
+        socket.emit("svc-audio", gamertag, opus)
+    }
+
     fun sendHeartbeat(
         players: List<PositionPayload>,
-        voiceEnabled: Boolean
+        voiceEnabled: Boolean,
+        svcPlayers: List<String> = emptyList()
     ) {
 
         if (!authenticated || !socket.connected()) {
@@ -196,6 +217,7 @@ class BackendSocketClient(
                 .put("players", playerArray)
                 .put("timestamp", System.currentTimeMillis())
                 .put("voiceEnabled", voiceEnabled)
+                .put("svcPlayers", JSONArray(svcPlayers))
         )
 
     }

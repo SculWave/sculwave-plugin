@@ -39,6 +39,24 @@ entry-point-priority: 1
 
 
 # ==========================================
+# Simple Voice Chat Bridge
+# ==========================================
+# When the Simple Voice Chat plugin is installed, players using its mod and players using the
+# SculWave app hear each other. Proximity, groups (/vc), /vm mute and voice bans all apply to both.
+# Has no effect if Simple Voice Chat is not installed.
+svc-bridge:
+  enabled: true
+
+  # Forward Simple Voice Chat whispers to app players.
+  # Off by default: app players hear within SculWave's own proximity range, which is much wider
+  # than a whisper.
+  forward-whispers: false
+
+  # How far (in blocks) Simple Voice Chat players hear app players.
+  # 0 = use Simple Voice Chat's own configured voice distance.
+  distance: 0
+
+# ==========================================
 # Voice Moderation
 # ==========================================
 

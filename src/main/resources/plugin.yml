@@ -3,6 +3,8 @@ version: '${version}'
 
 main: org.nxblack.sculwave.SculWave
 api-version: '26.1'
+# Load after Simple Voice Chat (if installed) so the voice bridge can register with it.
+softdepend: [voicechat]
 commands:
   voice:
     description: SculWave voice commands

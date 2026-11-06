@@ -19,6 +19,8 @@ import org.bukkit.plugin.java.JavaPlugin
 import org.nxblack.sculwave.data.*
 import org.nxblack.sculwave.data.BackendState.backendId
 import org.nxblack.sculwave.data.BackendState.instanceId
+import org.nxblack.sculwave.svc.SvcBridge
+import org.nxblack.sculwave.svc.SvcHost
 import org.nxblack.sculwave.voice.VoiceNameplateManager
 import java.net.HttpURLConnection
 import java.net.URI
@@ -43,6 +45,70 @@ class SculWave : JavaPlugin(), Listener {
     private lateinit var backendSocket: BackendSocketClient
     lateinit var voiceNameplateManager: VoiceNameplateManager
 
+    // --- Simple Voice Chat bridge -------------------------------------------------------------
+    // Cached copies of the config values the bridge reads from Simple Voice Chat's audio thread.
+    @Volatile private var voiceEnabled = true
+    @Volatile private var svcEnabled = true
+    @Volatile private var svcForwardWhispers = false
+    @Volatile private var svcDistance = 0.0
+
+    private val svcHost = object : SvcHost {
+        override val logger: java.util.logging.Logger
+            get() = this@SculWave.logger
+
+        override fun bridgeEnabled() = svcEnabled && voiceEnabled
+
+        override fun forwardWhispers() = svcForwardWhispers
+
+        override fun proximityDistance() = svcDistance
+
+        // Read the settings map without creating entries: these run on a foreign thread and
+        // must not resurrect settings for players who already left.
+        override fun canSpeak(player: Player) =
+            !isVoiceBanned(player) && playerSettings[player.uniqueId]?.muted != true
+
+        override fun canListen(player: Player) =
+            !isVoiceBanned(player) && playerSettings[player.uniqueId]?.muteAll != true
+
+        override fun hasAppVoice(player: Player): Boolean {
+            val state = voiceStateManager.get(player.name) ?: return false
+            return state.connected && !state.bridged
+        }
+
+        override fun groupOf(player: Player): String? =
+            playerSettings[player.uniqueId]?.groupId?.takeIf { it.isNotBlank() }
+
+        override fun groupOnly(player: Player) =
+            playerSettings[player.uniqueId]?.groupOnly == true
+
+        override fun findPlayer(name: String): Player? =
+            Bukkit.getOnlinePlayers().firstOrNull { it.name.equals(name, ignoreCase = true) }
+
+        override fun sendMicAudio(gamertag: String, opus: ByteArray) {
+            if (::backendSocket.isInitialized) {
+                backendSocket.sendSvcAudio(gamertag, opus)
+            }
+        }
+    }
+
+    val svcBridge = SvcBridge(svcHost)
+
+    // Bans are saved to config but were only loaded on /vc reload, so they were lost on restart.
+    private fun loadVoiceBans() {
+        voiceBannedPlayers.clear()
+
+        config.getStringList("voice-bans")
+            .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+            .forEach(voiceBannedPlayers::add)
+    }
+
+    private fun refreshSvcConfig() {
+        voiceEnabled = config.getBoolean("voice-enabled", true)
+        svcEnabled = config.getBoolean("svc-bridge.enabled", true)
+        svcForwardWhispers = config.getBoolean("svc-bridge.forward-whispers", false)
+        svcDistance = config.getDouble("svc-bridge.distance", 0.0)
+    }
+
     private val serverUrl: String
         get() = config.getString("server-url", "https://sculwave.com")!!
             .trimEnd('/')
@@ -52,6 +118,7 @@ class SculWave : JavaPlugin(), Listener {
         pendingInvites.remove(event.player.uniqueId)
         playerSettings.remove(event.player.uniqueId)
         voiceNameplateManager.clear(event.player)
+        svcBridge.onQuit(event.player)
     }
 
     @EventHandler
@@ -168,7 +235,10 @@ class SculWave : JavaPlugin(), Listener {
 
         server.pluginManager.registerEvents(this, this)
 
-
+        // Simple Voice Chat bridge (no-op when Simple Voice Chat is not installed).
+        refreshSvcConfig()
+        loadVoiceBans()
+        svcBridge.register(this)
 
         voiceStateManager.subscribe { state ->
             server.getPlayerExact(state.gamertag)?.let { target ->
@@ -192,9 +262,14 @@ class SculWave : JavaPlugin(), Listener {
     }
 
     override fun onDisable() {
-        voiceNameplateManager.clearAll()
+        svcBridge.shutdown()
+
+        if (::voiceNameplateManager.isInitialized) {
+            voiceNameplateManager.clearAll()
+        }
 
         if (::backendSocket.isInitialized) {
+
             backendSocket.disconnect()
         }
 
@@ -229,11 +304,14 @@ class SculWave : JavaPlugin(), Listener {
                     isMuted = settings.muted,
                 )
             }
+        val svcPlayers = svcBridge.connectedNames()
+
         scope.launch {
 
             backendSocket.sendHeartbeat(
                 payload,
-                config.getBoolean("voice-enabled")
+                config.getBoolean("voice-enabled"),
+                svcPlayers
             )
         }
     }
@@ -591,6 +669,7 @@ class SculWave : JavaPlugin(), Listener {
     fun reload(sender: Player) {
 
         reloadConfig()
+        refreshSvcConfig()
 
         voiceBannedPlayers.clear()
 
@@ -733,10 +812,6 @@ class SculWave : JavaPlugin(), Listener {
 
     private fun checkServer(): Boolean {
         return try {
-
-
-
-
 
 
             val uri = URI.create("$serverUrl/health")

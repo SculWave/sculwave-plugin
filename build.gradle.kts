@@ -10,13 +10,18 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.codemc.io/repository/maven-releases/")
     maven("https://repo.codemc.io/repository/maven-snapshots/")
+    // Simple Voice Chat API
+    maven("https://maven.maxhenkel.de/repository/public")
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.+")
 
+    // Simple Voice Chat API - compile-only, the real classes come from the voicechat plugin at runtime.
+    compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.0")
+
     // PacketEvents - supports 26.2 / Paper / Spigot / Folia
-    implementation("com.github.retrooper:packetevents-spigot:2.13.0")
+    implementation("com.github.retrooper:packetevents-spigot:2.14.0")
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.socket:socket.io-client:2.1.2")

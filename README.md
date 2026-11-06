@@ -149,6 +149,20 @@ debug: false
 
 ---
 
+## Simple Voice Chat Support
+
+If the [Simple Voice Chat](https://modrinth.com/plugin/simple-voice-chat) plugin is installed, players using its client mod and players using the SculWave app can talk to each other. Nothing extra to set up for players:
+
+* Simple Voice Chat players are heard by app players (they show up in the room as a participant with their Minecraft name).
+* App players are heard by Simple Voice Chat players, with Simple Voice Chat's own volume sliders and mute per player. They appear under the **SculWave App Players** volume category.
+* SculWave rules apply on both sides: proximity, `/vc` groups, `/vm` mute and voice bans.
+* A player who uses **both** hears app players in the app and mod players through the mod, so nobody is heard twice.
+* Whispers and audio inside a Simple Voice Chat group stay private and are not forwarded.
+
+Requires a SculWave backend version with Simple Voice Chat support. See the `svc-bridge` section of `config.yml`.
+
+---
+
 ## Group System
 
 Groups allow players to communicate regardless of proximity.
