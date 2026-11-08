@@ -21,6 +21,7 @@ import org.nxblack.sculwave.data.BackendState.backendId
 import org.nxblack.sculwave.data.BackendState.instanceId
 import org.nxblack.sculwave.svc.SvcBridge
 import org.nxblack.sculwave.svc.SvcHost
+import org.nxblack.sculwave.voice.VoiceHud
 import org.nxblack.sculwave.voice.VoiceNameplateManager
 import java.net.HttpURLConnection
 import java.net.URI
@@ -51,10 +52,15 @@ class SculWave : JavaPlugin(), Listener {
     @Volatile private var svcEnabled = true
     @Volatile private var svcForwardWhispers = false
     @Volatile private var svcDistance = 0.0
+    @Volatile private var debugEnabled = false
 
     private val svcHost = object : SvcHost {
         override val logger: java.util.logging.Logger
             get() = this@SculWave.logger
+
+        override fun debug(message: String) {
+            if (debugEnabled) this@SculWave.logger.info("[SVC][debug] $message")
+        }
 
         override fun bridgeEnabled() = svcEnabled && voiceEnabled
 
@@ -93,6 +99,14 @@ class SculWave : JavaPlugin(), Listener {
 
     val svcBridge = SvcBridge(svcHost)
 
+    /** Action-bar HUD (own mic status + group members) for Java and Bedrock players. */
+    val voiceHud = VoiceHud(this)
+
+    /** Logged only when `debug: true` in config.yml. */
+    fun debugLog(message: String) {
+        if (debugEnabled) logger.info("[debug] $message")
+    }
+
     // Bans are saved to config but were only loaded on /vc reload, so they were lost on restart.
     private fun loadVoiceBans() {
         voiceBannedPlayers.clear()
@@ -107,6 +121,8 @@ class SculWave : JavaPlugin(), Listener {
         svcEnabled = config.getBoolean("svc-bridge.enabled", true)
         svcForwardWhispers = config.getBoolean("svc-bridge.forward-whispers", false)
         svcDistance = config.getDouble("svc-bridge.distance", 0.0)
+        debugEnabled = config.getBoolean("debug", false)
+        logger.info("[SVC] Config: bridge=$svcEnabled voice-enabled=$voiceEnabled whispers=$svcForwardWhispers distance=$svcDistance debug=$debugEnabled")
     }
 
     private val serverUrl: String
@@ -119,11 +135,13 @@ class SculWave : JavaPlugin(), Listener {
         playerSettings.remove(event.player.uniqueId)
         voiceNameplateManager.clear(event.player)
         svcBridge.onQuit(event.player)
+        voiceHud.onQuit(event.player)
     }
 
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         val player = event.player
+        voiceHud.onJoin(player)
 
         if (BackendState.roomCode.isNotBlank()) {
             player.sendMessage("§7Voice Room: §f${BackendState.roomCode}")
@@ -234,10 +252,12 @@ class SculWave : JavaPlugin(), Listener {
 
 
         server.pluginManager.registerEvents(this, this)
+        server.pluginManager.registerEvents(voiceHud, this)
 
         // Simple Voice Chat bridge (no-op when Simple Voice Chat is not installed).
         refreshSvcConfig()
         loadVoiceBans()
+        voiceHud.reloadConfig()
         svcBridge.register(this)
 
         voiceStateManager.subscribe { state ->
@@ -263,6 +283,7 @@ class SculWave : JavaPlugin(), Listener {
 
     override fun onDisable() {
         svcBridge.shutdown()
+        voiceHud.shutdown()
 
         if (::voiceNameplateManager.isInitialized) {
             voiceNameplateManager.clearAll()
@@ -670,6 +691,7 @@ class SculWave : JavaPlugin(), Listener {
 
         reloadConfig()
         refreshSvcConfig()
+        voiceHud.reloadConfig()
 
         voiceBannedPlayers.clear()
 

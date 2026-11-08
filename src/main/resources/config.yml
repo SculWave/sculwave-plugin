@@ -57,6 +57,36 @@ svc-bridge:
   distance: 0
 
 # ==========================================
+# Voice HUD
+# ==========================================
+# Action-bar HUD for players using the SculWave app (Java or Bedrock): your own mic status
+# (Speaking / Mic on / Muted) plus your group members. Players on the Simple Voice Chat mod
+# are skipped, the mod has its own HUD. Players toggle it with /vc hud [on|off].
+hud:
+  enabled: true
+  # How often the HUD is refreshed, in ticks (20 ticks = 1 second).
+  update-ticks: 4
+  # Show your /vc group members.
+  show-group: true
+  # Java players: show group members as player heads (needs a 1.21.9+ client).
+  # Bedrock players always get a coloured dot and name instead, heads cannot be shown there.
+  heads: true
+  # Java players: also print names next to the heads.
+  java-names: false
+  # Most group members shown before "+N".
+  max-members: 6
+
+  # Mic icons instead of coloured dots. Needs the icon packs (see README).
+  # Bedrock: turn on once SculWave-Bedrock-icons.mcpack is in Geyser's "packs" folder.
+  bedrock-icons: false
+  # Java: players are offered the pack on join; they see icons once it has loaded, dots until then.
+  # Host SculWave-Java-icons-pack.zip somewhere with a direct download link and put the link and its
+  # SHA-1 here. Leave the url empty to not offer a pack.
+  java-pack:
+    url: ""
+    sha1: ""
+
+# ==========================================
 # Voice Moderation
 # ==========================================
 
@@ -84,4 +114,4 @@ sounds:
 # ==========================================
 
 # Enables additional diagnostic logging.
-debug: false
+debug: false  # also prints Simple Voice Chat bridge details every minute

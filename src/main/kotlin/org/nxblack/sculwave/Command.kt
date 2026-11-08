@@ -39,12 +39,14 @@ class Command(private val plugin: SculWave) : CommandExecutor {
             sender.sendMessage("§7/vc join <code>")
             sender.sendMessage("§7/vc leave")
             sender.sendMessage("§7/vc members")
+            sender.sendMessage("§7/vc hud [on|off] §8- voice HUD")
             sender.sendMessage("§7/vc kick <player>")
             sender.sendMessage("§7/vc transfer <player>")
             if (sender.hasPermission("sculwave.admin")) {
                 sender.sendMessage("§7/vc voiceban <player>")
                 sender.sendMessage("§7/vc voiceunban <player>")
                 sender.sendMessage("§7/vc voicecheck <player>")
+                sender.sendMessage("§7/vc svcstatus")
                 sender.sendMessage("§7/vc reload")
             }
             return true
@@ -158,6 +160,25 @@ class Command(private val plugin: SculWave) : CommandExecutor {
                 sender.sendMessage(
                     "§e${target.name}: ${if (plugin.isVoiceBanned(target)) "BANNED" else "ALLOWED"}"
                 )
+            }
+
+            "hud" -> {
+                val want = when (args.getOrNull(1)?.lowercase()) {
+                    "on" -> true
+                    "off" -> false
+                    else -> null
+                }
+                val on = plugin.voiceHud.toggle(sender, want)
+                sender.sendMessage(if (on) "§aVoice HUD on." else "§7Voice HUD off.")
+            }
+
+            "svcstatus" -> {
+                if (!sender.hasPermission("sculwave.admin")) {
+                    sender.sendMessage("§cNo permission.")
+                    return true
+                }
+                sender.sendMessage("§6[SculWave] Simple Voice Chat bridge")
+                plugin.svcBridge.statusLines().forEach { sender.sendMessage("§7$it") }
             }
 
             "reload" -> {

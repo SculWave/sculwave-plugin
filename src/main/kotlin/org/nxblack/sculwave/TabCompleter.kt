@@ -34,6 +34,7 @@ class TabCompleter(private val plugin: SculWave) : TabCompleter {
                 "join",
                 "leave",
                 "members",
+                "hud",
                 "kick",
                 "transfer"
             )
@@ -53,6 +54,10 @@ class TabCompleter(private val plugin: SculWave) : TabCompleter {
         // Second argument
         if (args.size == 2) {
             when (args[0].lowercase()) {
+
+                "hud" -> {
+                    return listOf("on", "off").filter { it.startsWith(args[1], ignoreCase = true) }
+                }
 
                 "join" -> {
                     val player = sender as? Player ?: return emptyList()

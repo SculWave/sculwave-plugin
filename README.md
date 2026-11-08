@@ -149,12 +149,30 @@ debug: false
 
 ---
 
+## Voice HUD
+
+Players using the SculWave app see a HUD in the action bar with their own mic status (**Speaking**, **Mic on**, **Muted**) and their group members, on both Java and Bedrock:
+
+* **Java:** group members are shown as player heads with a coloured status dot (needs a 1.21.9+ client).
+* **Bedrock:** group members are shown as a coloured dot plus their name, since heads cannot be drawn in text.
+* Group members on Simple Voice Chat show up too, with their speaking and muted state.
+* `/vc hud [on|off]` toggles it per player. See the `hud` section of `config.yml`.
+
+### Mic icons (optional)
+
+By default the HUD uses coloured dots. Two small packs replace them with mic icons (green speaking, blue mic on, red crossed muted):
+
+* **Bedrock:** put `SculWave-Bedrock-icons.mcpack` in `plugins/Geyser-Spigot/packs/`, restart, and set `hud.bedrock-icons: true`.
+* **Java:** host `SculWave-Java-icons-pack.zip` at a direct download link and set `hud.java-pack.url` and `hud.java-pack.sha1`. Players are offered the pack when they join and see dots until it has loaded.
+
+---
+
 ## Simple Voice Chat Support
 
 If the [Simple Voice Chat](https://modrinth.com/plugin/simple-voice-chat) plugin is installed, players using its client mod and players using the SculWave app can talk to each other. Nothing extra to set up for players:
 
 * Simple Voice Chat players are heard by app players (they show up in the room as a participant with their Minecraft name).
-* App players are heard by Simple Voice Chat players, with Simple Voice Chat's own volume sliders and mute per player. They appear under the **SculWave App Players** volume category.
+* App players are heard by Simple Voice Chat players, with Simple Voice Chat's own volume sliders and mute per player. They appear under the **SculWave App** volume category.
 * SculWave rules apply on both sides: proximity, `/vc` groups, `/vm` mute and voice bans.
 * A player who uses **both** hears app players in the app and mod players through the mod, so nobody is heard twice.
 * Whispers and audio inside a Simple Voice Chat group stay private and are not forwarded.

@@ -22,6 +22,7 @@ class BackendSocketClient(
     @Volatile
     private var authenticated = false
     private var authToken: String? = null
+    private var firstPlaybackLogged = false
 
     fun connect() {
         if (::socket.isInitialized) {
@@ -137,6 +138,10 @@ class BackendSocketClient(
         socket.on("svc-playback") { args ->
             val speaker = args.getOrNull(0) as? String ?: return@on
             val opus = args.getOrNull(1) as? ByteArray ?: return@on
+            if (!firstPlaybackLogged) {
+                firstPlaybackLogged = true
+                plugin.logger.info("[BackendSocket] First app audio frame received for the Simple Voice Chat bridge ($speaker).")
+            }
             plugin.svcBridge.onPlayback(speaker, opus)
         }
 
@@ -181,6 +186,7 @@ class BackendSocketClient(
     /** Forwards one Opus frame from a Simple Voice Chat player. Safe to call from any thread. */
     fun sendSvcAudio(gamertag: String, opus: ByteArray) {
         if (!authenticated || !socket.connected()) {
+            plugin.svcBridge.stats.micNotSent.incrementAndGet()
             return
         }
 
